@@ -4,7 +4,7 @@ import { analyzeVulnerability, generateExecutiveSummary } from './ai.service';
 import { CreateScanRequest, Scan, Vulnerability } from '../types';
 import { wsManager } from './websocket.service';
 
-const SCANNER_BIN = process.env.SCANNER_BIN ?? './scanner';
+const SCANNER_BIN = process.env.SCANNER_BIN ?? (process.env.NODE_ENV === 'production' ? '/scanner/scanner' : './scanner');
 
 export async function createScan(
   userId: string,
@@ -165,8 +165,9 @@ async function enrichWithAI(scanId: string, targetUrl: string): Promise<void> {
   );
   const vulns: Vulnerability[] = vulnRows.rows;
 
-  // Analyze each vulnerability with Claude (top 10 to avoid cost)
-  for (const vuln of vulns.slice(0, 10)) {
+  // Analyze each vulnerability with Claude (configurable limit to avoid cost)
+  const limit = Number(process.env.AI_ANALYSIS_LIMIT) || 10;
+  for (const vuln of vulns.slice(0, limit)) {
     try {
       const analysis = await analyzeVulnerability(vuln, targetUrl);
       await db.query(

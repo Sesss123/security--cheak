@@ -53,6 +53,7 @@ enum ScanModule {
     Info,
     Jwt,
     Redirect,
+    Sast,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -81,6 +82,7 @@ async fn main() -> Result<()> {
             ScanType::InfoDisclosure,
             ScanType::JwtAnalysis,
             ScanType::OpenRedirect,
+            ScanType::Sast,
         ]
     } else {
         cli.scans.iter().flat_map(|s| match s {
@@ -94,6 +96,7 @@ async fn main() -> Result<()> {
             ScanModule::Info     => vec![ScanType::InfoDisclosure],
             ScanModule::Jwt      => vec![ScanType::JwtAnalysis],
             ScanModule::Redirect => vec![ScanType::OpenRedirect],
+            ScanModule::Sast     => vec![ScanType::Sast],
         }).collect()
     };
 

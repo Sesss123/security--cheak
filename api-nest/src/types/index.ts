@@ -26,7 +26,12 @@ export type ScanType =
   | 'cors_check'
   | 'info_disclosure'
   | 'jwt_analysis'
-  | 'open_redirect';
+  | 'open_redirect'
+  | 'sast'
+  | 'api'
+  | 'container'
+  | 'cloud'
+  | 'ctf_scan';
 
 export interface ScanOptions {
   rate_limit: number;
@@ -89,6 +94,8 @@ export interface Vulnerability {
   ai_remediation_steps: string[];
   ai_code_example: string | null;
   fix_priority: number | null;
+  attack_path?: string[];
+  attack_probability?: string;
   created_at: string;
 }
 
@@ -115,15 +122,15 @@ export interface WsEvent {
   timestamp: string;
 }
 
-// ── AI Analysis ───────────────────────────────────────────────
+// ── AI SOC Analyst ───────────────────────────────────────────────
 export interface AiVulnAnalysis {
   explanation: string;
   business_impact: string;
   remediation_steps: string[];
   code_example: string | null;
-  fix_priority: number;
   attack_path?: string[];
-  attack_probability?: string;
+  attack_probability?: 'HIGH' | 'MEDIUM' | 'LOW';
+  fix_priority: number;
 }
 
 export interface AiReportSummary {
@@ -131,3 +138,4 @@ export interface AiReportSummary {
   risk_rating: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'MINIMAL';
   top_recommendations: string[];
 }
+

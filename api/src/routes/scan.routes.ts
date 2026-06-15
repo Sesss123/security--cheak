@@ -83,6 +83,9 @@ scanRouter.get('/:id', authenticate, async (req: Request, res: Response) => {
 
 // GET /api/scans/:id/vulnerabilities — get all vulns for a scan
 scanRouter.get('/:id/vulnerabilities', authenticate, async (req: Request, res: Response) => {
+  const page  = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const offset = (page - 1) * limit;
   // Verify ownership
   const scan = await db.query(
     'SELECT id FROM scans WHERE id=$1 AND user_id=$2',
@@ -104,11 +107,22 @@ scanRouter.get('/:id/vulnerabilities', authenticate, async (req: Request, res: R
   const result = await db.query(
     `SELECT * FROM vulnerabilities
      WHERE ${conditions.join(' AND ')}
-     ORDER BY cvss_score DESC, severity`,
+     ORDER BY cvss_score DESC, severity
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+
+  const count = await db.query(
+    `SELECT COUNT(*) FROM vulnerabilities WHERE ${conditions.join(' AND ')}`,
     params
   );
 
-  return res.json(result.rows);
+  return res.json({
+    vulnerabilities: result.rows,
+    total: parseInt(count.rows[0].count),
+    page,
+    limit
+  });
 });
 
 // GET /api/scans/:id/report — get AI report for a scan

@@ -16,7 +16,7 @@ const wss  = new WebSocket.Server({ server, path: '/ws' });
 
 // ── Middleware ────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') ?? '*' }));
+app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:5173'] }));
 app.use(express.json({ limit: '10mb' }));
 
 app.use(rateLimit({
@@ -57,6 +57,11 @@ wss.on('connection', (ws: any, req: any) => {
 const PORT = parseInt(process.env.PORT ?? '3001');
 
 async function start() {
+  if (!process.env.JWT_SECRET) {
+    console.error('FATAL ERROR: JWT_SECRET environment variable is missing.');
+    process.exit(1);
+  }
+
   await checkDb();
 
   server.listen(PORT, () => {

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { Vulnerability, AiVulnAnalysis, AiReportSummary } from '../types';
-import { RagService } from './rag.service';
+import { ContextBuilderService } from '../ai/rag/services/context-builder.service';
 
 @Injectable()
 export class AiService {
@@ -9,7 +9,7 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly MODEL = 'llama3-8b-8192';
 
-  constructor(private readonly ragService: RagService) {
+  constructor(private readonly contextBuilder: ContextBuilderService) {
     this.client = new OpenAI({
       apiKey: process.env.GROQ_API_KEY || process.env.CLAUDE_API_KEY,
       baseURL: 'https://api.groq.com/openai/v1',
@@ -20,6 +20,8 @@ export class AiService {
     vuln: Vulnerability & { cve_id?: string; exploit_available?: boolean },
     targetUrl: string,
   ): Promise<AiVulnAnalysis & { attack_path?: string[]; attack_probability?: string }> {
+    const ragContext = await this.contextBuilder.buildVulnAnalysisContext(vuln);
+
     const prompt = `You are an elite AI SOC Analyst and Cybersecurity Consultant. Analyze this vulnerability and provide a detailed assessment including an Attack Path.
 
 Target: ${targetUrl}
@@ -30,6 +32,7 @@ Category: ${vuln.category}
 CVE ID: ${vuln.cve_id ?? 'None'}
 Public Exploit Available: ${vuln.exploit_available ? 'YES' : 'NO'}
 Description: ${vuln.description}
+${ragContext}
 
 Respond ONLY with a valid JSON object, no markdown, no preamble:
 {
@@ -147,14 +150,7 @@ risk_rating must be one of: CRITICAL, HIGH, MEDIUM, LOW, MINIMAL`;
     userMessage: string,
     history: Array<{ role: 'user' | 'assistant'; content: string }>,
   ): Promise<string> {
-    // 1. Query RAG Vector Database for similar past vulnerabilities across the enterprise
-    const similarDocs = await this.ragService.searchSimilarVulnerabilities(userMessage, 3);
-    
-    let ragContext = '';
-    if (similarDocs.length > 0) {
-      ragContext = `\n\n--- ENTERPRISE KNOWLEDGE BASE (Similar Past Vulnerabilities) ---\n` +
-        similarDocs.map((doc, idx) => `[${idx+1}] Title: ${doc.payload?.title}\nSeverity: ${doc.payload?.severity}\nPrevious Remediation: ${doc.payload?.remediation || 'N/A'}`).join('\n\n');
-    }
+    const ragContext = await this.contextBuilder.buildChatContext(userMessage);
 
     const context = `You are a cybersecurity expert assistant helping analyze security scan results.
 

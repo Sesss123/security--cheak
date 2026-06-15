@@ -27,6 +27,8 @@ pub enum ScanType {
     ApiSecurity,
     InfoDisclosure,
     OpenRedirect,
+    CtfScan,
+    Sast,
 }
 
 /// Options to control scan behavior

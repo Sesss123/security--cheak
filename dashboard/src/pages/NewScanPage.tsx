@@ -14,6 +14,7 @@ const SCAN_MODULES = [
   { id: 'info_disclosure',  label: 'Info Disclosure',    desc: 'Exposed .env, .git, backups',          icon: '📂' },
   { id: 'jwt_analysis',     label: 'JWT Weaknesses',     desc: 'alg=none, weak secrets',               icon: '🔑' },
   { id: 'open_redirect',    label: 'Open Redirect',      desc: 'Unvalidated redirect endpoints',       icon: '↪️' },
+  { id: 'ctf_scan',         label: 'CTF Analyzer',       desc: 'Flags, subdomains, hidden paths',      icon: '🚩' },
 ];
 
 export function NewScanPage() {

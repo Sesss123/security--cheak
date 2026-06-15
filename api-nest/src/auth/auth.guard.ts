@@ -1,25 +1,32 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import * as jwt from 'jsonwebtoken';
-import { AuthPayload } from '../types';
+import { Injectable, CanActivate, ExecutionContext, Inject } from '@nestjs/common';
+import { DB_POOL } from '../db/database.module';
+import { Pool } from 'pg';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(@Inject(DB_POOL) private db: Pool) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
-
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('No token provided');
-    }
-
-    const token = authHeader.slice(7);
-
+    
     try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
-      request.user = payload;
+      // Auto-login as default local user (Bypass JWT for single-user mode)
+      let userResult = await this.db.query('SELECT id, email FROM users LIMIT 1');
+      
+      if (userResult.rows.length === 0) {
+        // Create a default user if none exists
+        userResult = await this.db.query(`
+          INSERT INTO users (email, password_hash, name) 
+          VALUES ('admin@localhost', 'dummy', 'Local Administrator') 
+          RETURNING id, email
+        `);
+      }
+      
+      request.user = { userId: userResult.rows[0].id, email: userResult.rows[0].email };
       return true;
-    } catch {
-      throw new UnauthorizedException('Invalid or expired token');
+    } catch (err) {
+      console.error('AuthGuard bypass error:', err);
+      return false;
     }
   }
 }

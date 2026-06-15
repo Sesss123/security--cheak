@@ -15,7 +15,31 @@ export async function analyzeVulnerability(
   vuln: Vulnerability,
   targetUrl: string
 ): Promise<AiVulnAnalysis> {
-  const prompt = `You are a senior cybersecurity expert. Analyze this vulnerability found during a security scan and provide a detailed assessment.
+  const isCtf = vuln.title.includes('🚩') || vuln.title.includes('CTF') || vuln.title.includes('FLAG') || vuln.title.includes('Hidden Path') || vuln.category === 'InformationDisclosure';
+  
+  const prompt = isCtf 
+  ? `You are an expert Capture The Flag (CTF) Mentor. Analyze this CTF finding and provide subtle, educational hints to help the player learn without directly giving them the flag.
+
+Target: ${targetUrl}
+CTF Finding Title: ${vuln.title}
+Evidence: ${JSON.stringify(vuln.evidence.slice(0, 2))}
+Description: ${vuln.description}
+
+Respond ONLY with a valid JSON object, no markdown:
+{
+  "explanation": "Explain what this finding usually means in the context of a CTF challenge (2-3 sentences)",
+  "business_impact": "Explain how this misconfiguration happens in the real world (2 sentences)",
+  "remediation_steps": [
+    "Hint 1: A very subtle push in the right direction",
+    "Hint 2: A slightly more direct hint if they are stuck",
+    "Hint 3: The methodology to exploit this (without giving the exact command/flag)"
+  ],
+  "code_example": null,
+  "fix_priority": 10,
+  "attack_path": ["Reconnaissance", "Discovery", "Exploitation"],
+  "attack_probability": "HIGH"
+}`
+  : `You are a senior cybersecurity expert. Analyze this vulnerability found during a security scan and provide a detailed assessment.
 
 Target: ${targetUrl}
 Vulnerability Title: ${vuln.title}
@@ -38,7 +62,9 @@ Respond ONLY with a valid JSON object, no markdown, no preamble:
     "Step 3: verify the fix"
   ],
   "code_example": "Optional: show vulnerable code vs fixed code if applicable, or null",
-  "fix_priority": 8
+  "fix_priority": 8,
+  "attack_path": ["Initial Access", "Execution", "Exfiltration"],
+  "attack_probability": "MEDIUM"
 }
 
 fix_priority is 1-10 (10 = fix immediately, 1 = low priority).`;

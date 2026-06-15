@@ -2,7 +2,8 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CreateScanRequest, Scan } from '../types';
 import { DB_POOL } from '../db/database.module';
-import { ClientProxy } from '@nestjs/microservices';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { ScanGateway } from '../gateways/scan.gateway';
 
 @Injectable()
@@ -11,7 +12,7 @@ export class ScannerService {
 
   constructor(
     @Inject(DB_POOL) private db: Pool,
-    @Inject('SCANNER_SERVICE') private rabbitClient: ClientProxy,
+    @InjectQueue('scan-jobs') private scanQueue: Queue,
     private scanGateway: ScanGateway,
   ) {}
 
@@ -44,8 +45,8 @@ export class ScannerService {
 
     this.logger.log(`Queueing scan ${scanId} to RabbitMQ...`);
     
-    // Emit job to RabbitMQ queue 'scan_queue'
-    this.rabbitClient.emit('run_scan', { scanId, scan });
+    // Emit job to BullMQ queue 'scan-jobs'
+    await this.scanQueue.add('run_scan', { scanId, scan });
 
     this.scanGateway.broadcast(scan.id, {
       type: 'scan:started',

@@ -12,6 +12,16 @@ import { NewScanPage }    from './pages/NewScanPage';
 import { ScanDetailPage } from './pages/ScanDetailPage';
 import { AnalyticsPage }  from './pages/AnalyticsPage';
 
+// CTF & Recon Pages
+import { CtfHubPage }         from './pages/ctf/CtfHubPage';
+import { ReconDashboard }     from './pages/ctf/ReconDashboard';
+import { ChallengeAnalyzer }  from './pages/ctf/ChallengeAnalyzer';
+import { WebHelper }          from './pages/ctf/WebHelper';
+import { ForensicsWorkbench } from './pages/ctf/ForensicsWorkbench';
+import { CryptoToolkit }      from './pages/ctf/CryptoToolkit';
+import { ReverseEngineering } from './pages/ctf/ReverseEngineering';
+import { CompetitionMode }    from './pages/ctf/CompetitionMode';
+
 const qc = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 30_000, retry: 1 },
@@ -19,8 +29,8 @@ const qc = new QueryClient({
 });
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.token);
-  return token ? <>{children}</> : <Navigate to="/login" replace />;
+  // Login bypassed for local single-user mode
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -43,6 +53,16 @@ export default function App() {
             <Route path="/scans/new"     element={<NewScanPage />} />
             <Route path="/scans/:id"     element={<ScanDetailPage />} />
             <Route path="/analytics"     element={<AnalyticsPage />} />
+            
+            {/* CTF & Recon Pages */}
+            <Route path="/ctf"                     element={<CtfHubPage />} />
+            <Route path="/ctf/recon"               element={<ReconDashboard />} />
+            <Route path="/ctf/challenge-analyzer"  element={<ChallengeAnalyzer />} />
+            <Route path="/ctf/web-helper"          element={<WebHelper />} />
+            <Route path="/ctf/forensics"           element={<ForensicsWorkbench />} />
+            <Route path="/ctf/crypto"              element={<CryptoToolkit />} />
+            <Route path="/ctf/re"                  element={<ReverseEngineering />} />
+            <Route path="/ctf/competition"         element={<CompetitionMode />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -89,7 +89,10 @@ export class ScanController {
   }
 
   @Get(':id/vulnerabilities')
-  async getVulnerabilities(@Param('id') id: string, @Query('severity') severity: string, @Req() req: any, @Res() res: Response) {
+  async getVulnerabilities(@Param('id') id: string, @Query('severity') severity: string, @Query('page') queryPage: string, @Query('limit') queryLimit: string, @Req() req: any, @Res() res: Response) {
+    const page  = parseInt(queryPage) || 1;
+    const limit = parseInt(queryLimit) || 50;
+    const offset = (page - 1) * limit;
     // Verify ownership
     const scan = await this.db.query(
       'SELECT id FROM scans WHERE id=$1 AND user_id=$2',
@@ -110,11 +113,22 @@ export class ScanController {
     const result = await this.db.query(
       `SELECT * FROM vulnerabilities
        WHERE ${conditions.join(' AND ')}
-       ORDER BY cvss_score DESC, severity`,
+       ORDER BY cvss_score DESC, severity
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+
+    const count = await this.db.query(
+      `SELECT COUNT(*) FROM vulnerabilities WHERE ${conditions.join(' AND ')}`,
       params
     );
 
-    return res.json(result.rows);
+    return res.json({
+      vulnerabilities: result.rows,
+      total: parseInt(count.rows[0].count),
+      page,
+      limit
+    });
   }
 
   @Get(':id/report')

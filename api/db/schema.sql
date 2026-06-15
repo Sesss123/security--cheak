@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
   ai_remediation_steps JSONB DEFAULT '[]',
   ai_code_example     TEXT,
   fix_priority        INT,
+  attack_path         JSONB DEFAULT '[]',
+  attack_probability  VARCHAR(20),
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
