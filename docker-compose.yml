@@ -1,32 +1,56 @@
-version: '3.9'
-
 services:
   # ── Rust Scanner Engine ──────────────────────────────────────
   scanner:
     build: ./scanner
     container_name: security-scanner
-    restart: unless-stopped
-    environment:
-      - RUST_LOG=info
-    networks:
-      - security-net
+    entrypoint: ["cp", "/app/scanner", "/shared/scanner"]
+    volumes:
+      - scanner_bin:/shared
 
   # ── Node.js REST API ─────────────────────────────────────────
   api:
-    build: ./api
+    build: ./api-nest
     container_name: security-api
     restart: unless-stopped
     ports:
       - "3001:3001"
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/security_platform
-      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QDRANT_URL=http://qdrant:6333
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - JWT_SECRET=${JWT_SECRET}
+      - RABBITMQ_URL=amqp://rabbitmq:5672
       - SCANNER_BIN=/scanner/scanner
     depends_on:
       - postgres
       - redis
+    networks:
+      - security-net
+    volumes:
+      - scanner_bin:/scanner
+
+  # ── Node.js Worker Node ───────────────────────────────────────
+  worker:
+    build: ./api-nest
+    container_name: security-worker
+    restart: unless-stopped
+    command: ["npm", "run", "start:worker"]
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/security_platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QDRANT_URL=http://qdrant:6333
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - SCANNER_BIN=/scanner/scanner
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - api
     networks:
       - security-net
     volumes:
@@ -71,7 +95,16 @@ services:
     networks:
       - security-net
 
-
+  # ── RabbitMQ Message Broker ──────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: security-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - security-net
 
   # ── Qdrant Vector DB ─────────────────────────────────────────
   qdrant:

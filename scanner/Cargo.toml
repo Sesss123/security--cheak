@@ -18,11 +18,10 @@ path = "src/lib.rs"
 tokio = { version = "1.35", features = ["full"] }
 
 # HTTP client
-reqwest = { version = "0.11", features = ["json", "rustls-tls", "blocking", "cookies"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "blocking", "cookies", "multipart"] }
 
 # TLS analysis
 rustls = "0.21"
-webpki = "0.22"
 x509-parser = "0.15"
 
 # Serialization
@@ -42,13 +41,11 @@ url = "2.5"
 # Regex for pattern matching
 regex = "1.10"
 
-# DNS resolution
+# HTML Parsing for Crawler
+scraper = "0.18"
+
+# DNS Resolution for Subdomain Enum
 trust-dns-resolver = "0.23"
-
-# Port scanning
-tokio-net = { version = "0.2.0-alpha.6" }
-
-
 # HTTP header analysis
 http = "0.2"
 
@@ -71,6 +68,9 @@ governor = "0.6"
 
 # Base64 (for SSL cert analysis)
 base64 = "0.21"
+
+# Headless browser for DOM XSS
+headless_chrome = { version = "1.0.8", features = ["fetch"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

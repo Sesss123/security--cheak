@@ -5,6 +5,15 @@ use crate::models::vulnerability::{
     Vulnerability, VulnCategory, OwaspCategory, Evidence, EvidenceType,
 };
 use crate::models::scan::Severity;
+use crate::modules::crawler::Crawler;
+use crate::modules::subdomain_enum::SubdomainEnumerator;
+use crate::modules::dir_bruteforce::DirBruteforcer;
+use crate::modules::ssrf::SsrfDetector;
+use crate::modules::xxe::XxeDetector;
+use crate::modules::csrf::CsrfDetector;
+use crate::modules::file_upload::FileUploadDetector;
+use crate::modules::dom_xss::DomXssScanner;
+use crate::modules::graphql::GraphqlScanner;
 
 /// SQL Injection test payloads
 const SQLI_PAYLOADS: &[&str] = &[
@@ -88,13 +97,64 @@ impl VulnDetector {
         info!("Starting vulnerability detection for {}", self.base_url);
         let mut vulns = vec![];
 
-        // Run all checks concurrently
+        // 1. Run Recon (Crawler, Subdomains, Dir Bruteforce)
+        let crawler = Crawler::new(self.base_url.clone(), 2);
+        let sub_enum = SubdomainEnumerator::new();
+        let dir_bf = DirBruteforcer::new(self.base_url.clone());
+
+        let (crawl_result, subdomains, hidden_dirs) = tokio::join!(
+            crawler.crawl_site(),
+            sub_enum.enumerate(&self.base_url),
+            dir_bf.bruteforce()
+        );
+
+        // Add Recon findings as Informational "Vulnerabilities"
+        for sub in subdomains {
+            vulns.push(Vulnerability::new(
+                "Subdomain Discovered",
+                format!("Found subdomain: {}", sub),
+                Severity::Low,
+                VulnCategory::InformationDisclosure,
+                format!("https://{}", sub),
+            ));
+        }
+
+        for dir in hidden_dirs {
+            vulns.push(Vulnerability::new(
+                "Hidden Path Discovered",
+                format!("Found accessible hidden path: {}", dir),
+                Severity::Low,
+                VulnCategory::InformationDisclosure,
+                dir,
+            ));
+        }
+
+        // 2. Run Vulnerability Checks using dynamic crawler data
         let (sqli_vulns, xss_vulns, redirect_vulns, info_vulns, jwt_vulns) = tokio::join!(
-            self.check_sql_injection(),
-            self.check_xss(),
-            self.check_open_redirect(),
+            self.check_sql_injection(&crawl_result),
+            self.check_xss(&crawl_result),
+            self.check_open_redirect(&crawl_result),
             self.check_information_disclosure(),
             self.check_jwt_weaknesses(),
+        );
+
+        // 3. Run Advanced Attack Modules (Phase B)
+        let ssrf = SsrfDetector::new(self.base_url.clone());
+        let xxe = XxeDetector::new(self.base_url.clone());
+        let csrf = CsrfDetector::new(self.base_url.clone());
+        let upload = FileUploadDetector::new(self.base_url.clone());
+        let dom_xss = DomXssScanner::new(self.base_url.clone());
+        let graphql = GraphqlScanner::new(self.base_url.clone());
+
+        let target_urls: Vec<String> = crawl_result.urls.clone();
+
+        let (ssrf_vulns, xxe_vulns, csrf_vulns, upload_vulns, dom_xss_vulns, graphql_vulns) = tokio::join!(
+            ssrf.detect(&crawl_result),
+            xxe.detect(&crawl_result),
+            async { csrf.detect(&crawl_result) }, // CSRF is synchronous
+            upload.detect(&crawl_result),
+            dom_xss.scan(&target_urls),
+            graphql.scan(&target_urls)
         );
 
         vulns.extend(sqli_vulns);
@@ -102,24 +162,41 @@ impl VulnDetector {
         vulns.extend(redirect_vulns);
         vulns.extend(info_vulns);
         vulns.extend(jwt_vulns);
+        vulns.extend(ssrf_vulns);
+        vulns.extend(xxe_vulns);
+        vulns.extend(csrf_vulns);
+        vulns.extend(upload_vulns);
+        vulns.extend(dom_xss_vulns);
+        vulns.extend(graphql_vulns);
 
         info!("Found {} vulnerabilities", vulns.len());
         vulns
     }
 
     /// SQL Injection detection
-    async fn check_sql_injection(&self) -> Vec<Vulnerability> {
-        info!("Testing for SQL Injection...");
+    async fn check_sql_injection(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
+        info!("Testing for SQL Injection on discovered endpoints...");
         let mut vulns = vec![];
 
-        // Common injectable endpoints to test
-        let test_urls = vec![
+        let mut test_urls = vec![
             format!("{}/search?q=", self.base_url),
             format!("{}/user?id=", self.base_url),
-            format!("{}/product?id=", self.base_url),
-            format!("{}/page?id=", self.base_url),
-            format!("{}/article?id=", self.base_url),
         ];
+
+        // Add dynamic endpoints from crawler
+        for form in &crawl_result.forms {
+            if form.method == "GET" && !form.inputs.is_empty() {
+                let param = &form.inputs[0];
+                test_urls.push(format!("{}?{}=", form.action, param));
+            }
+        }
+        
+        for url in &crawl_result.urls {
+            if url.contains("?") && url.contains("=") {
+                let base = url.split("=").next().unwrap_or(url);
+                test_urls.push(format!("{}=", base));
+            }
+        }
 
         for base_test_url in &test_urls {
             for payload in SQLI_PAYLOADS {
@@ -184,15 +261,21 @@ impl VulnDetector {
     }
 
     /// XSS Detection
-    async fn check_xss(&self) -> Vec<Vulnerability> {
-        info!("Testing for XSS...");
+    async fn check_xss(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
+        info!("Testing for XSS on discovered endpoints...");
         let mut vulns = vec![];
 
-        let test_params = vec!["q", "search", "query", "name", "input", "message", "comment"];
-        let test_urls: Vec<String> = test_params
-            .iter()
-            .map(|p| format!("{}/?{}=", self.base_url, p))
-            .collect();
+        let mut test_urls = vec![
+            format!("{}/?q=", self.base_url),
+        ];
+
+        // Dynamic parameters
+        for form in &crawl_result.forms {
+            if form.method == "GET" && !form.inputs.is_empty() {
+                let param = &form.inputs[0];
+                test_urls.push(format!("{}?{}=", form.action, param));
+            }
+        }
 
         for base_url in &test_urls {
             for payload in XSS_PAYLOADS {
@@ -246,7 +329,7 @@ impl VulnDetector {
     }
 
     /// Open Redirect Detection
-    async fn check_open_redirect(&self) -> Vec<Vulnerability> {
+    async fn check_open_redirect(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
         info!("Testing for Open Redirect...");
         let mut vulns = vec![];
 

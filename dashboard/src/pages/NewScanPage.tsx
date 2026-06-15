@@ -10,11 +10,18 @@ const SCAN_MODULES = [
   { id: 'security_headers', label: 'Security Headers',   desc: 'Check 9 critical HTTP headers',        icon: '🛡️' },
   { id: 'sql_injection',    label: 'SQL Injection',      desc: 'Detect SQLi vulnerabilities',          icon: '💉' },
   { id: 'xss',              label: 'XSS Detection',      desc: 'Cross-site scripting checks',          icon: '⚡' },
+  { id: 'dom_xss',          label: 'DOM XSS (Headless)', desc: 'Detect Client-Side XSS via Chromium',  icon: '🌐' },
+  { id: 'graphql',          label: 'GraphQL Scanner',    desc: 'Introspection & DoS batch attacks',    icon: '📊' },
+  { id: 'ssrf',             label: 'SSRF Check',         desc: 'Server-Side Request Forgery',          icon: '🌍' },
+  { id: 'xxe',              label: 'XXE Detection',      desc: 'XML External Entity parsing',          icon: '📄' },
+  { id: 'csrf',             label: 'CSRF Detection',     desc: 'Missing anti-CSRF tokens',             icon: '🍪' },
+  { id: 'upload',           label: 'File Uploads',       desc: 'Malicious file upload bypass',         icon: '📁' },
   { id: 'cors_check',       label: 'CORS Analysis',      desc: 'Cross-origin misconfiguration',        icon: '🌐' },
   { id: 'info_disclosure',  label: 'Info Disclosure',    desc: 'Exposed .env, .git, backups',          icon: '📂' },
   { id: 'jwt_analysis',     label: 'JWT Weaknesses',     desc: 'alg=none, weak secrets',               icon: '🔑' },
   { id: 'open_redirect',    label: 'Open Redirect',      desc: 'Unvalidated redirect endpoints',       icon: '↪️' },
-  { id: 'ctf_scan',         label: 'CTF Analyzer',       desc: 'Flags, subdomains, hidden paths',      icon: '🚩' },
+  { id: 'crawler',          label: 'Web Crawler',        desc: 'Discover links and forms dynamically', icon: '🕷️' },
+  { id: 'dir_bruteforce',   label: 'Dir Bruteforce',     desc: 'Find hidden admin panels',             icon: '🚪' },
 ];
 
 export function NewScanPage() {

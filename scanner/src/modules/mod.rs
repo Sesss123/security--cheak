@@ -6,5 +6,14 @@ pub mod orchestrator;
 pub mod ctf_analyzer;
 pub mod sast_analyzer;
 pub mod threat_intel;
+pub mod crawler;
+pub mod subdomain_enum;
+pub mod dir_bruteforce;
+pub mod ssrf;
+pub mod xxe;
+pub mod csrf;
+pub mod file_upload;
+pub mod dom_xss;
+pub mod graphql;
 
 pub use orchestrator::ScanOrchestrator;

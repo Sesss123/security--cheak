@@ -29,6 +29,14 @@ pub enum ScanType {
     OpenRedirect,
     CtfScan,
     Sast,
+    Ssrf,
+    Xxe,
+    Csrf,
+    Upload,
+    Crawler,
+    DirBruteforce,
+    DomXss,
+    Graphql,
 }
 
 /// Options to control scan behavior

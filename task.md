@@ -15,10 +15,10 @@
   - `[x]` Migrate Auth, Scan, and Analytics Controllers
 - `[x]` **Completed Date**: 2026-06-15
 
-## ⏳ In Progress
-- `[/]` **Phase 3: Integration & Testing**
-  - `[/]` Verify React Dashboard connection to NestJS API
-  - `[/]` Run End-to-End scan testing
+- `[x]` **Phase 3: Integration & Testing**
+  - `[x]` Verify React Dashboard connection to NestJS API
+  - `[x]` Run End-to-End scan testing
+  - `[x]` Fix Docker Compose environment (.env, nginx, api-nest, rabbitmq)
 
 ## 📝 Pending Tasks
 - `[x]` **Phase 3.5: Security & Stability Hotfixes**
@@ -98,3 +98,36 @@
   - `[x]` Create Backend HealthController (`/api/health`)
   - `[x]` Create Frontend SystemStatus Component
   - `[x]` Integrate SystemStatus into Dashboard Layout
+
+- `[x]` **Phase 16: Bug Fixes**
+  - `[x]` Fix API crash (crypto is not defined) by upgrading to Node 20
+  - `[x]` Fix Redis connection refused by setting REDIS_HOST instead of REDIS_URL
+  - `[x]` Fix Qdrant connection refused by setting QDRANT_URL in docker-compose
+
+- `[x]` **Phase 17: Scanner Core Fix (Phase A)**
+  - `[x]` Add scraper and trust-dns-resolver to Cargo.toml
+  - `[x]` Implement Web Crawler (crawler.rs)
+  - `[x]` Implement Subdomain Enum (subdomain_enum.rs)
+  - `[x]` Implement Directory Bruteforce (dir_bruteforce.rs)
+  - `[x]` Integrate Crawler with vuln_detector.rs
+
+- `[x]` **Phase 18: Advanced Attack Modules (Phase B)**
+  - `[x]` Implement SSRF Detection
+  - `[x]` Implement XXE Detection
+  - `[x]` Implement CSRF Detection
+  - `[x]` Implement File Upload Vulnerability Detection
+  - `[x]` Integrate new modules into scanner orchestration
+
+- `[x]` **Phase 19: Dashboard Upgrade (Phase C)**
+  - `[x]` Setup WebSocket Gateway in NestJS for live scan logs
+  - `[x]` Build Live Terminal UI in React Dashboard
+  - `[x]` Add Attack Module Selector to Scan Form
+  - `[x]` Update NestJS to pass module arguments to Rust Scanner
+  - `[x]` Implement PDF Report Export with `jspdf` / `html2canvas`
+
+- `[x]` **Phase 20: Advanced Security Modules (Phase D)**
+  - `[x]` Add headless_chrome to Cargo.toml
+  - `[x]` Implement DOM XSS Scanner (dom_xss.rs)
+  - `[x]` Implement GraphQL Scanner (graphql.rs)
+  - `[x]` Expose DOM XSS & GraphQL in CLI and Orchestrator
+  - `[x]` Add options to Dashboard UI

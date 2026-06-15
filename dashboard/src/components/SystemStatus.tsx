@@ -15,7 +15,7 @@ export function SystemStatus() {
     const fetchHealth = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await axios.get('http://localhost:3001/api/health', {
+        const res = await axios.get('/api/health', {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         setHealth(res.data);

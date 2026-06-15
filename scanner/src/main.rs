@@ -54,6 +54,14 @@ enum ScanModule {
     Jwt,
     Redirect,
     Sast,
+    Ssrf,
+    Xxe,
+    Csrf,
+    Upload,
+    Crawler,
+    DirBruteforce,
+    DomXss,
+    Graphql,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -83,6 +91,14 @@ async fn main() -> Result<()> {
             ScanType::JwtAnalysis,
             ScanType::OpenRedirect,
             ScanType::Sast,
+            ScanType::Ssrf,
+            ScanType::Xxe,
+            ScanType::Csrf,
+            ScanType::Upload,
+            ScanType::Crawler,
+            ScanType::DirBruteforce,
+            ScanType::DomXss,
+            ScanType::Graphql,
         ]
     } else {
         cli.scans.iter().flat_map(|s| match s {
@@ -97,6 +113,14 @@ async fn main() -> Result<()> {
             ScanModule::Jwt      => vec![ScanType::JwtAnalysis],
             ScanModule::Redirect => vec![ScanType::OpenRedirect],
             ScanModule::Sast     => vec![ScanType::Sast],
+            ScanModule::Ssrf     => vec![ScanType::Ssrf],
+            ScanModule::Xxe      => vec![ScanType::Xxe],
+            ScanModule::Csrf     => vec![ScanType::Csrf],
+            ScanModule::Upload   => vec![ScanType::Upload],
+            ScanModule::Crawler  => vec![ScanType::Crawler],
+            ScanModule::DirBruteforce => vec![ScanType::DirBruteforce],
+            ScanModule::DomXss   => vec![ScanType::DomXss],
+            ScanModule::Graphql  => vec![ScanType::Graphql],
         }).collect()
     };
 

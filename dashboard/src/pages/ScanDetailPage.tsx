@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, RefreshCw, MessageSquare, FileText } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MessageSquare, Download } from 'lucide-react';
 import { scansApi, connectScanWS } from '../services/api';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { SeverityBadge } from '../components/SeverityBadge';
 import { RiskScore } from '../components/RiskScore';
 import { AiChat } from '../components/AiChat';
@@ -18,8 +20,8 @@ export function ScanDetailPage() {
   const { data: scan, refetch: refetchScan } = useQuery({
     queryKey: ['scan', id],
     queryFn: () => scansApi.get(id!),
-    refetchInterval: (data) =>
-      data?.status === 'running' || data?.status === 'pending' ? 3000 : false,
+    refetchInterval: (query: any) =>
+      query?.state?.data?.status === 'running' || query?.state?.data?.status === 'pending' ? 3000 : false,
   });
 
   const { data: vulns, refetch: refetchVulns } = useQuery({
@@ -58,6 +60,66 @@ export function ScanDetailPage() {
     return () => wsRef.current?.close();
   }, [id, scan?.status]);
 
+  const terminalEndRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    // Auto-scroll terminal
+    if (terminalEndRef.current) {
+      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  const downloadPDF = () => {
+    if (!scan) return;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(20);
+    doc.text('Security Scan Report', 14, 22);
+    
+    doc.setFontSize(12);
+    doc.text(`Target URL: ${scan.target_url}`, 14, 32);
+    doc.text(`Date: ${new Date(scan.completed_at || new Date()).toLocaleString()}`, 14, 40);
+    doc.text(`Risk Score: ${scan.risk_score || 'N/A'} / 10.0`, 14, 48);
+
+    // Summary
+    doc.text(`Critical: ${scan.critical_count} | High: ${scan.high_count} | Medium: ${scan.medium_count} | Low: ${scan.low_count}`, 14, 56);
+    
+    // Vulnerabilities Table
+    if (vulns && vulns.length > 0) {
+      const tableColumn = ["Severity", "Title", "CVSS", "Affected URL"];
+      const tableRows: any[] = [];
+
+      vulns.forEach((v: any) => {
+        tableRows.push([
+          v.severity,
+          v.title,
+          v.cvss_score,
+          v.affected_url
+        ]);
+      });
+
+      autoTable(doc, {
+        startY: 65,
+        head: [tableColumn],
+        body: tableRows,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [79, 70, 229] }, // Indigo-600
+        didParseCell: function(data) {
+           if (data.section === 'body' && data.column.index === 0) {
+               // Color code severity
+               if (data.cell.raw === 'CRITICAL') data.cell.styles.textColor = [220, 38, 38];
+               else if (data.cell.raw === 'HIGH') data.cell.styles.textColor = [234, 88, 12];
+               else if (data.cell.raw === 'MEDIUM') data.cell.styles.textColor = [202, 138, 4];
+               else if (data.cell.raw === 'LOW') data.cell.styles.textColor = [22, 163, 74];
+           }
+        }
+      });
+    }
+
+    doc.save(`security-report-${scan.target_url.replace(/https?:\/\//, '').split('/')[0]}.pdf`);
+  };
+
   if (!scan) return <div className="p-6 text-gray-500">Loading...</div>;
 
   const isRunning = scan.status === 'pending' || scan.status === 'running';
@@ -87,8 +149,14 @@ export function ScanDetailPage() {
           {scan.status === 'completed' && (
             <>
               <button
+                onClick={downloadPDF}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <Download className="h-3.5 w-3.5" /> Export PDF
+              </button>
+              <button
                 onClick={() => setShowChat(!showChat)}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium hover:bg-gray-50"
+                className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
               >
                 <MessageSquare className="h-3.5 w-3.5" /> Ask AI
               </button>
@@ -134,19 +202,35 @@ export function ScanDetailPage() {
         </div>
       )}
 
-      {/* Live logs */}
+      {/* Hacker Live Terminal */}
       {isRunning && (
-        <div className="rounded-xl border border-gray-200 bg-gray-900 p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <RefreshCw className="h-3.5 w-3.5 animate-spin text-green-400" />
-            <span className="text-xs font-medium text-green-400">Scan in progress...</span>
+        <div className="rounded-xl border border-gray-700 bg-black p-4 shadow-xl">
+          <div className="mb-3 flex items-center justify-between border-b border-gray-800 pb-2">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin text-green-500" />
+              <span className="text-sm font-bold text-green-500 tracking-wider">SECURE-SCAN TERMINAL v2.0</span>
+            </div>
+            <div className="flex gap-1.5">
+              <div className="h-2.5 w-2.5 rounded-full bg-red-500"></div>
+              <div className="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
+              <div className="h-2.5 w-2.5 rounded-full bg-green-500"></div>
+            </div>
           </div>
-          <div className="h-32 overflow-y-auto font-mono text-xs text-gray-300 space-y-0.5">
+          <div className="h-64 overflow-y-auto font-mono text-xs text-green-400 space-y-1 bg-black p-2 rounded">
             {logs.length === 0 ? (
-              <div className="text-gray-500">Waiting for scanner output...</div>
+              <div className="text-gray-500 animate-pulse">Initializing connection to target payload...</div>
             ) : (
-              logs.map((log, i) => <div key={i}>{log}</div>)
+              logs.map((log, i) => (
+                <div key={i} className="flex">
+                  <span className="text-green-600 mr-2 opacity-50">&gt;</span>
+                  <span className={log.includes('🚨 Found') ? 'text-red-500 font-bold' : ''}>
+                    {log}
+                  </span>
+                </div>
+              ))
             )}
+            <div ref={terminalEndRef} />
+            <div className="animate-pulse text-green-500 mt-2">_</div>
           </div>
         </div>
       )}
@@ -258,10 +342,39 @@ function VulnRow({ vuln }: { vuln: any }) {
                   ))}
                 </ol>
               ) : (
-                <p className="mt-1 text-sm text-gray-700">{vuln.remediation}</p>
+                <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{vuln.remediation}</p>
               )}
             </div>
           )}
+
+          {/* Evidence Details */}
+          {vuln.evidence && vuln.evidence.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Raw Evidence</h4>
+              {vuln.evidence.map((ev: any, i: number) => (
+                <div key={i} className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-xs font-semibold text-gray-700">{ev.description || 'Payload Result'}</div>
+                  {ev.request && (
+                    <div className="mt-2">
+                      <div className="text-[10px] text-gray-500 font-bold uppercase">Request:</div>
+                      <pre className="mt-1 overflow-x-auto rounded bg-gray-800 p-2 text-[10px] text-gray-300">
+                        {ev.request}
+                      </pre>
+                    </div>
+                  )}
+                  {ev.response && (
+                    <div className="mt-2">
+                      <div className="text-[10px] text-gray-500 font-bold uppercase">Response Extract:</div>
+                      <pre className="mt-1 overflow-x-auto rounded bg-gray-800 p-2 text-[10px] text-gray-300">
+                        {ev.response}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
 
           {vuln.ai_code_example && (
             <div>
