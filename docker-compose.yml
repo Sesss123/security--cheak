@@ -1,0 +1,123 @@
+version: '3.9'
+
+services:
+  # ── Rust Scanner Engine ──────────────────────────────────────
+  scanner:
+    build: ./scanner
+    container_name: security-scanner
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+    networks:
+      - security-net
+
+  # ── Node.js REST API ─────────────────────────────────────────
+  api:
+    build: ./api
+    container_name: security-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/security_platform
+      - REDIS_URL=redis://redis:6379
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - SCANNER_BIN=/scanner/scanner
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - security-net
+    volumes:
+      - scanner_bin:/scanner
+
+  # ── React Dashboard ──────────────────────────────────────────
+  dashboard:
+    build: ./dashboard
+    container_name: security-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - security-net
+
+  # ── PostgreSQL Database ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: security-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: security_platform
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./api/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - security-net
+
+  # ── Redis Cache ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: security-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - security-net
+
+  # ── RabbitMQ ─────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: security-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    networks:
+      - security-net
+
+  # ── Qdrant Vector DB ─────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant
+    container_name: security-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - security-net
+
+  # ── Nginx Reverse Proxy ──────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: security-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - dashboard
+    networks:
+      - security-net
+
+volumes:
+  postgres_data:
+  scanner_bin:
+  qdrant_data:
+
+networks:
+  security-net:
+    driver: bridge
