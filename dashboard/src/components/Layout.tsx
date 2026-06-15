@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/auth.store';
 import { clsx } from 'clsx';
+import { SystemStatus } from './SystemStatus';
 
 const NAV = [
   { to: '/',         icon: LayoutDashboard, label: 'Dashboard', exact: true },
@@ -83,6 +84,11 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* System Status */}
+        <div className="p-3">
+          <SystemStatus />
+        </div>
 
         {/* User */}
         <div className="border-t border-gray-100 p-3">

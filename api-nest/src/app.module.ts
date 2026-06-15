@@ -15,6 +15,7 @@ import { ScanGateway } from './gateways/scan.gateway';
 import { AuthController } from './controllers/auth.controller';
 import { ScanController } from './controllers/scan.controller';
 import { AnalyticsController } from './controllers/analytics.controller';
+import { HealthController } from './controllers/health.controller';
 import { ResultAggregatorProcessor } from './workers/result-aggregator.processor.js';
 import { CtfModule } from './ctf/ctf.module';
 import { ApiScannerModule } from './scanners/api-scanner/api-scanner.module';
@@ -49,6 +50,7 @@ import { RagModule } from './ai/rag/rag.module';
     AuthController,
     ScanController,
     AnalyticsController,
+    HealthController,
   ],
   providers: [
     AppService, 

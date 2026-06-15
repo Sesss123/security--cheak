@@ -8,7 +8,7 @@ import { Scan } from '../types';
 @Processor('scan-jobs')
 export class ScannerWorker extends WorkerHost {
   private readonly logger = new Logger(ScannerWorker.name);
-  private readonly SCANNER_BIN = process.env.SCANNER_BIN ?? (process.env.NODE_ENV === 'production' ? '/scanner/scanner' : '../scanner/target/release/security-scanner.exe');
+  private readonly SCANNER_BIN = process.env.SCANNER_BIN ?? (process.env.NODE_ENV === 'production' ? '/scanner/scanner' : '../scanner/target/release/scanner.exe');
 
   constructor(
     @InjectQueue('scan-results') private resultQueue: Queue,

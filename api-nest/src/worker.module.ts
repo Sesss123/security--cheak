@@ -10,9 +10,10 @@ import { ScannerWorker } from './workers/scanner.worker';
         port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
       },
     }),
-    BullModule.registerQueue({
-      name: 'scan-results',
-    }),
+    BullModule.registerQueue(
+      { name: 'scan-jobs' },
+      { name: 'scan-results' },
+    ),
   ],
   providers: [ScannerWorker],
 })
