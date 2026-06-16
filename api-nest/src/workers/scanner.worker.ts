@@ -33,9 +33,33 @@ export class ScannerWorker extends WorkerHost {
         this.logger.log(`Running API Scanner on ${scan.target_url}`);
         rawResult = await this.runApiScanner(scanId, scan.target_url);
       } else {
+        const scanTypeMap: Record<string, string> = {
+          'port_scan': 'ports',
+          'ssl_analysis': 'ssl',
+          'security_headers': 'headers',
+          'sql_injection': 'sqli',
+          'xss': 'xss',
+          'dom_xss': 'dom-xss',
+          'graphql': 'graphql',
+          'ssrf': 'ssrf',
+          'xxe': 'xxe',
+          'csrf': 'csrf',
+          'upload': 'upload',
+          'cors_check': 'cors',
+          'info_disclosure': 'info',
+          'jwt_analysis': 'jwt',
+          'open_redirect': 'redirect',
+          'crawler': 'crawler',
+          'dir_bruteforce': 'dir-bruteforce',
+          'waf_detector': 'waf',
+          'cloud_scanner': 'cloud',
+          'api_fuzzer': 'api-fuzzer'
+        };
+        const rustScans = scan.scan_types.map(t => scanTypeMap[t] || t).join(',');
+        
         const args = [
           '--target', scan.target_url,
-          '--scans', scan.scan_types.join(','),
+          '--scans', rustScans,
           '--json',
         ];
         rawResult = await this.runScannerProcess(scanId, args);

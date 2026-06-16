@@ -14,6 +14,9 @@ use crate::modules::csrf::CsrfDetector;
 use crate::modules::file_upload::FileUploadDetector;
 use crate::modules::dom_xss::DomXssScanner;
 use crate::modules::graphql::GraphqlScanner;
+use crate::modules::waf_detector::WafDetector;
+use crate::modules::cloud_scanner::CloudScanner;
+use crate::modules::api_fuzzer::ApiFuzzer;
 
 /// SQL Injection test payloads
 const SQLI_PAYLOADS: &[&str] = &[
@@ -145,16 +148,25 @@ impl VulnDetector {
         let upload = FileUploadDetector::new(self.base_url.clone());
         let dom_xss = DomXssScanner::new(self.base_url.clone());
         let graphql = GraphqlScanner::new(self.base_url.clone());
+        let waf_det = WafDetector::new(self.base_url.clone());
+        let cloud_scan = CloudScanner::new(self.base_url.clone());
+        let api_fuzz = ApiFuzzer::new(self.base_url.clone());
 
-        let target_urls: Vec<String> = crawl_result.urls.clone();
+        let target_urls: Vec<String> = crawl_result.urls.clone().into_iter().collect();
 
-        let (ssrf_vulns, xxe_vulns, csrf_vulns, upload_vulns, dom_xss_vulns, graphql_vulns) = tokio::join!(
+        let (
+            ssrf_vulns, xxe_vulns, csrf_vulns, upload_vulns, 
+            dom_xss_vulns, graphql_vulns, waf_vulns, cloud_vulns, api_vulns
+        ) = tokio::join!(
             ssrf.detect(&crawl_result),
             xxe.detect(&crawl_result),
             async { csrf.detect(&crawl_result) }, // CSRF is synchronous
             upload.detect(&crawl_result),
             dom_xss.scan(&target_urls),
-            graphql.scan(&target_urls)
+            graphql.scan(&target_urls),
+            waf_det.detect(),
+            cloud_scan.detect(),
+            api_fuzz.detect()
         );
 
         vulns.extend(sqli_vulns);
@@ -168,6 +180,9 @@ impl VulnDetector {
         vulns.extend(upload_vulns);
         vulns.extend(dom_xss_vulns);
         vulns.extend(graphql_vulns);
+        vulns.extend(waf_vulns);
+        vulns.extend(cloud_vulns);
+        vulns.extend(api_vulns);
 
         info!("Found {} vulnerabilities", vulns.len());
         vulns

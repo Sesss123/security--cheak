@@ -58,7 +58,7 @@ impl DomXssScanner {
                                 "DOM-Based XSS (Headless Browser)",
                                 format!("JavaScript execution detected via DOM manipulation using payload: {}", payload),
                                 Severity::High,
-                                VulnCategory::CrossSiteScripting,
+                                VulnCategory::Xss,
                                 test_url.clone(),
                             )
                             .with_owasp(OwaspCategory::A03Injection)
@@ -66,9 +66,14 @@ impl DomXssScanner {
                                 "Avoid using sink functions like innerHTML, document.write, or eval with untrusted data (like location.hash). Use safe alternatives like textContent or DOMPurify."
                             )
                             .with_evidence(
-                                "Browser Dialog / Alert",
-                                &format!("Navigated to {}", test_url),
-                                "A JavaScript alert/prompt/confirm dialog was triggered upon rendering the page.",
+                                crate::models::vulnerability::Evidence {
+                                    evidence_type: crate::models::vulnerability::EvidenceType::HttpResponse,
+                                    request: None,
+                                    response: Some(format!("Navigated to {}", test_url)),
+                                    payload: None,
+                                    screenshot_path: None,
+                                    description: "A JavaScript alert/prompt/confirm dialog was triggered upon rendering the page.".to_string(),
+                                }
                             )
                         );
                         // Stop testing payloads for this URL if one works
@@ -95,10 +100,8 @@ impl DomXssScanner {
         let alert_triggered_clone = Arc::clone(&alert_triggered);
 
         // Register event listener for JavaScript dialogs (alerts)
-        tab.add_event_listener(Arc::new(move |event| {
-            if let headless_chrome::browser::tab::events::Event::TargetCrashed(_) = event {
-                // Ignore
-            }
+        tab.add_event_listener(Arc::new(move |event: &headless_chrome::protocol::cdp::types::Event| {
+            // Ignored TargetCrashed check to fix compile error
             // For headless_chrome 1.0.8, we check if the event involves a JavascriptDialogOpening
             // Since the event enum might be complex, we just try to parse the JSON string or use the debug format
             let ev_str = format!("{:?}", event);
@@ -113,7 +116,7 @@ impl DomXssScanner {
 
         let triggered = alert_triggered.load(std::sync::atomic::Ordering::SeqCst);
         
-        let _ = tab.close_with_behavior(true);
+        let _ = tab.close(true);
 
         Ok(triggered)
     }

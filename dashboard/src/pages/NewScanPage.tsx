@@ -22,6 +22,9 @@ const SCAN_MODULES = [
   { id: 'open_redirect',    label: 'Open Redirect',      desc: 'Unvalidated redirect endpoints',       icon: '↪️' },
   { id: 'crawler',          label: 'Web Crawler',        desc: 'Discover links and forms dynamically', icon: '🕷️' },
   { id: 'dir_bruteforce',   label: 'Dir Bruteforce',     desc: 'Find hidden admin panels',             icon: '🚪' },
+  { id: 'waf_detector',     label: 'WAF Evasion',        desc: 'Detect & Bypass Cloudflare/AWS WAF',   icon: '🛡️' },
+  { id: 'cloud_scanner',    label: 'Cloud Scanner',      desc: 'S3 Buckets & Firebase databases',      icon: '☁️' },
+  { id: 'api_fuzzer',       label: 'API Fuzzer',         desc: 'Auto-fuzz Swagger/OpenAPI endpoints',  icon: '🤖' },
 ];
 
 export function NewScanPage() {

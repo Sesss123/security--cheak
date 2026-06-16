@@ -63,7 +63,7 @@ const CTF_PATHS: &[&str] = &[
     "/?debug=1", "/?test=1", "/?admin=1",
 
     // robots.txt hidden paths
-    "/robots.txt", "/sitemap.xml",
+    "/sitemap.xml",
 
     // Common CTF specific
     "/the-flag", "/get-flag", "/givemeflag",
@@ -107,6 +107,21 @@ pub enum CtfFindingType {
     RobotsDisallowed, // robots.txt disallowed paths
 }
 
+impl PartialEq for CtfFinding {
+    fn eq(&self, other: &Self) -> bool {
+        self.title == other.title && self.url == other.url && self.evidence == other.evidence
+    }
+}
+impl Eq for CtfFinding {}
+
+impl std::hash::Hash for CtfFinding {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.title.hash(state);
+        self.url.hash(state);
+        self.evidence.hash(state);
+    }
+}
+
 // ── Main CTF Scanner ─────────────────────────────────────────
 pub struct CtfScanner {
     client: Client,
@@ -122,7 +137,7 @@ impl CtfScanner {
             .build()
             .unwrap();
 
-        Self { client, base_url }
+        Self { client, base_url: base_url.trim_end_matches('/').to_string() }
     }
 
     /// Run all CTF checks
@@ -147,6 +162,10 @@ impl CtfScanner {
         findings.extend(robots);
         findings.extend(subdomains);
 
+        // Deduplicate findings
+        let unique_findings: HashSet<_> = findings.into_iter().collect();
+        let mut findings: Vec<_> = unique_findings.into_iter().collect();
+
         // Sort by priority
         findings.sort_by(|a, b| b.priority.cmp(&a.priority));
 
@@ -161,7 +180,6 @@ impl CtfScanner {
 
         let pages_to_check = vec![
             self.base_url.clone(),
-            format!("{}/", self.base_url),
             format!("{}/index.php", self.base_url),
             format!("{}/index.html", self.base_url),
         ];
@@ -259,7 +277,7 @@ impl CtfScanner {
         // Scan in batches of 20
         for chunk in CTF_PATHS.chunks(20) {
             let futures: Vec<_> = chunk.iter().map(|path| {
-                let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
+                let url = format!("{}{}", self.base_url, path);
                 let client = self.client.clone();
                 async move {
                     if let Ok(resp) = client.get(&url).send().await {
@@ -302,7 +320,7 @@ impl CtfScanner {
                             (5, "Accessible path found, investigate manually")
                         }
                     }
-                    403 => (4, "Forbidden - but exists! Try path traversal or auth bypass"),
+                    403 => (4, "Forbidden - authentication required or access denied"),
                     301 | 302 => (3, "Redirect found - follow it manually"),
                     _ => continue,
                 };
@@ -407,6 +425,7 @@ impl CtfScanner {
                         hint: "1. Decode at jwt.io\n2. Try alg=none attack\n3. Try HS256 with empty secret\n4. Check claims for flag hints".to_string(),
                         priority: 8,
                     });
+                    continue;
                 }
 
                 // Check for base64 encoded values
@@ -424,6 +443,7 @@ impl CtfScanner {
                                     hint: "Modify the decoded value (e.g. set admin=true) and re-encode".to_string(),
                                     priority: 7,
                                 });
+                                continue;
                             }
                         }
                     }
@@ -456,7 +476,7 @@ impl CtfScanner {
         info!("Checking robots.txt...");
         let mut findings = vec![];
 
-        let robots_url = format!("{}/robots.txt", self.base_url.trim_end_matches('/'));
+        let robots_url = format!("{}/robots.txt", self.base_url);
 
         if let Ok(resp) = self.client.get(&robots_url).send().await {
             if resp.status().as_u16() == 200 {
@@ -482,7 +502,7 @@ impl CtfScanner {
                             hint: format!(
                                 "Check these paths:\n{}",
                                 disallowed.iter()
-                                    .map(|p| format!("{}{}", self.base_url.trim_end_matches('/'), p))
+                                    .map(|p| format!("{}{}", self.base_url, p))
                                     .collect::<Vec<_>>()
                                     .join("\n")
                             ),
@@ -507,6 +527,11 @@ impl CtfScanner {
         if let Ok(url) = url::Url::parse(&self.base_url) {
             if let Some(host) = url.host_str() {
                 let root_domain = host.strip_prefix("www.").unwrap_or(host);
+                
+                // Skip if root_domain is an IP address
+                if root_domain.parse::<std::net::IpAddr>().is_ok() {
+                    return findings;
+                }
                 
                 let crt_url = format!("https://crt.sh/?q=%.{}&output=json", root_domain);
                 
@@ -544,38 +569,25 @@ impl CtfScanner {
     }
 }
 
-// Simple base64 decode helper
+use base64::{Engine as _, engine::general_purpose};
+
+// Simple base64 decode helper using base64 crate
 fn base64_decode(input: &str) -> Result<Vec<u8>> {
-    // Basic base64 check
+    // Basic base64 check to avoid unnecessary allocations
     let clean = input.trim_end_matches('=');
     if clean.chars().all(|c| c.is_alphanumeric() || c == '+' || c == '/' || c == '-' || c == '_') {
-        // Try standard base64
-        let standard = input.replace('-', "+").replace('_', "/");
-        let padded = match standard.len() % 4 {
-            2 => format!("{}==", standard),
-            3 => format!("{}=", standard),
-            _ => standard,
-        };
-
-        let mut bytes = vec![];
-        let table = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-        for chunk in padded.as_bytes().chunks(4) {
-            let mut vals = [0u8; 4];
-            for (i, &b) in chunk.iter().enumerate() {
-                vals[i] = if b == b'=' { 0 }
-                else { table.iter().position(|&t| t == b).unwrap_or(0) as u8 };
-            }
-            bytes.push((vals[0] << 2) | (vals[1] >> 4));
-            if chunk.get(2) != Some(&b'=') {
-                bytes.push((vals[1] << 4) | (vals[2] >> 2));
-            }
-            if chunk.get(3) != Some(&b'=') {
-                bytes.push((vals[2] << 6) | vals[3]);
-            }
+        // Try decoding with standard alphabet and padding
+        if let Ok(decoded) = general_purpose::STANDARD.decode(input) {
+            return Ok(decoded);
         }
-        Ok(bytes)
-    } else {
-        Err(anyhow::anyhow!("Not base64"))
+        // Try decoding with URL-safe alphabet
+        if let Ok(decoded) = general_purpose::URL_SAFE.decode(input) {
+            return Ok(decoded);
+        }
+        if let Ok(decoded) = general_purpose::URL_SAFE_NO_PAD.decode(input) {
+            return Ok(decoded);
+        }
     }
+    
+    Err(anyhow::anyhow!("Not base64"))
 }

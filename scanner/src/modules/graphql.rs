@@ -101,9 +101,14 @@ impl GraphqlScanner {
                 .with_owasp(OwaspCategory::A01BrokenAccessControl)
                 .with_remediation("Disable GraphQL introspection in production environments. If using Apollo Server, set introspection: false.")
                 .with_evidence(
-                    "GraphQL Introspection Query",
-                    &payload.to_string(),
-                    &text.chars().take(200).collect::<String>(),
+                    crate::models::vulnerability::Evidence {
+                        evidence_type: crate::models::vulnerability::EvidenceType::HttpResponse,
+                        request: None,
+                        response: Some(text.chars().take(200).collect::<String>()),
+                        payload: Some(payload.to_string()),
+                        screenshot_path: None,
+                        description: "GraphQL Introspection Query".to_string(),
+                    }
                 )
             ));
         }
@@ -131,9 +136,14 @@ impl GraphqlScanner {
                     .with_owasp(OwaspCategory::A04InsecureDesign)
                     .with_remediation("Disable batching if not required, or strictly limit the maximum number of batched operations allowed per request.")
                     .with_evidence(
-                        "Batch Query Payload",
-                        "[{\"query\": \"query { __typename }\"}, ... 50 times]",
-                        "Server processed all queries in one request.",
+                        crate::models::vulnerability::Evidence {
+                            evidence_type: crate::models::vulnerability::EvidenceType::HttpResponse,
+                            request: None,
+                            response: None,
+                            payload: Some("[{\"query\": \"query { __typename }\"}, ... 50 times]".to_string()),
+                            screenshot_path: None,
+                            description: "Server processed all queries in one request.".to_string(),
+                        }
                     )
                 ));
             }

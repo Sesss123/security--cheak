@@ -94,6 +94,17 @@
   - `[x]` Create Reverse Engineering UI
   - `[x]` Create Competition Dashboard UI
 
+- `[x]` **Phase 21: CTF Analyzer Bug Fixes**
+  - `[x]` Fix duplicate `robots.txt` scanning
+  - `[x]` Add HashSet deduplication for duplicate findings
+  - `[x]` Fix cookie triple findings (add `continue`)
+  - `[x]` Fix custom base64 decoder using `base64` crate
+  - `[x]` Fix trailing slash inconsistencies
+  - `[x]` Remove duplicate homepage requests
+  - `[x]` Remove redundant `trim_end_matches` inside loops
+  - `[x]` Correct misleading 403 hint text
+  - `[x]` Skip `crt.sh` IP address lookups
+
 - `[x]` **Phase 15: System Health Monitoring**
   - `[x]` Create Backend HealthController (`/api/health`)
   - `[x]` Create Frontend SystemStatus Component
@@ -131,3 +142,10 @@
   - `[x]` Implement GraphQL Scanner (graphql.rs)
   - `[x]` Expose DOM XSS & GraphQL in CLI and Orchestrator
   - `[x]` Add options to Dashboard UI
+
+- `[ ]` **Phase 22: Elite Security Features (Phase E)**
+  - `[ ]` Implement WAF Detection & Evasion (`waf_detector.rs`)
+  - `[ ]` Implement Cloud Infrastructure Scanner (`cloud_scanner.rs`)
+  - `[ ]` Implement OpenAPI Intelligent Fuzzer (`api_fuzzer.rs`)
+  - `[ ]` Expose in CLI and API mapping
+  - `[ ]` Add options to Dashboard UI

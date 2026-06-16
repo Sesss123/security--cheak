@@ -37,6 +37,9 @@ pub enum ScanType {
     DirBruteforce,
     DomXss,
     Graphql,
+    WafDetector,
+    CloudScanner,
+    ApiFuzzer,
 }
 
 /// Options to control scan behavior

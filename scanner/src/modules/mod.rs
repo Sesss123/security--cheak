@@ -15,5 +15,8 @@ pub mod csrf;
 pub mod file_upload;
 pub mod dom_xss;
 pub mod graphql;
+pub mod waf_detector;
+pub mod cloud_scanner;
+pub mod api_fuzzer;
 
 pub use orchestrator::ScanOrchestrator;

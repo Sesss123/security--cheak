@@ -62,6 +62,9 @@ enum ScanModule {
     DirBruteforce,
     DomXss,
     Graphql,
+    Waf,
+    Cloud,
+    ApiFuzzer,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -99,6 +102,9 @@ async fn main() -> Result<()> {
             ScanType::DirBruteforce,
             ScanType::DomXss,
             ScanType::Graphql,
+            ScanType::WafDetector,
+            ScanType::CloudScanner,
+            ScanType::ApiFuzzer,
         ]
     } else {
         cli.scans.iter().flat_map(|s| match s {
@@ -121,6 +127,9 @@ async fn main() -> Result<()> {
             ScanModule::DirBruteforce => vec![ScanType::DirBruteforce],
             ScanModule::DomXss   => vec![ScanType::DomXss],
             ScanModule::Graphql  => vec![ScanType::Graphql],
+            ScanModule::Waf      => vec![ScanType::WafDetector],
+            ScanModule::Cloud    => vec![ScanType::CloudScanner],
+            ScanModule::ApiFuzzer => vec![ScanType::ApiFuzzer],
         }).collect()
     };
 
