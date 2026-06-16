@@ -1,6 +1,6 @@
 use reqwest::Client;
 use std::collections::HashSet;
-use tracing::{info, warn};
+use tracing::info;
 use futures::stream::{self, StreamExt};
 
 pub struct DirBruteforcer {

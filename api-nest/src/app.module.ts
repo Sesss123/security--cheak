@@ -22,7 +22,7 @@ import { ApiScannerModule } from './scanners/api-scanner/api-scanner.module';
 import { ContainerScannerModule } from './scanners/container-scanner/container-scanner.module';
 import { CloudScannerModule } from './scanners/cloud-scanner/cloud-scanner.module';
 import { RagModule } from './ai/rag/rag.module';
-
+import { AgentsModule } from './ai/agents/agents.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -31,6 +31,7 @@ import { RagModule } from './ai/rag/rag.module';
     CloudScannerModule,
     CtfModule,
     RagModule,
+    AgentsModule,
     ScheduleModule.forRoot(),
     BullModule.forRoot({
       connection: {

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde_json::json;
-use tracing::{info, warn};
+use tracing::info;
 use url::Url;
 
 use crate::models::vulnerability::{Vulnerability, VulnCategory, OwaspCategory};

@@ -344,7 +344,7 @@ impl VulnDetector {
     }
 
     /// Open Redirect Detection
-    async fn check_open_redirect(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
+    async fn check_open_redirect(&self, _crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
         info!("Testing for Open Redirect...");
         let mut vulns = vec![];
 

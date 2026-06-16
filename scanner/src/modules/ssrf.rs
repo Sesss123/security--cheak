@@ -6,6 +6,7 @@ use tracing::{info, warn};
 
 pub struct SsrfDetector {
     client: Client,
+    #[allow(dead_code)]
     base_url: String,
 }
 

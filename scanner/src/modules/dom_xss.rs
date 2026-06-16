@@ -2,7 +2,6 @@ use std::sync::Arc;
 use headless_chrome::{Browser, LaunchOptions};
 use anyhow::Result;
 use tracing::{info, warn, error};
-use url::Url;
 
 use crate::models::vulnerability::{Vulnerability, VulnCategory, OwaspCategory};
 use crate::models::scan::Severity;

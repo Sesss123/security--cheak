@@ -4,6 +4,7 @@ use crate::modules::crawler::CrawlResult;
 use tracing::{info, warn};
 
 pub struct CsrfDetector {
+    #[allow(dead_code)]
     base_url: String,
 }
 

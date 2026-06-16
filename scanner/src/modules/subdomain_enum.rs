@@ -1,7 +1,7 @@
 use reqwest::Client;
 use serde_json::Value;
 use std::collections::HashSet;
-use tracing::{info, warn};
+use tracing::info;
 use trust_dns_resolver::TokioAsyncResolver;
 use url::Url;
 
