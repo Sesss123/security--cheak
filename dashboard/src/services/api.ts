@@ -62,24 +62,52 @@ export const analyticsApi = {
 // ── WebSocket ─────────────────────────────────────────────────
 export function connectScanWS(
   scanId: string,
-  onEvent: (event: { type: string; data: unknown }) => void
-): WebSocket {
-  const ws = new WebSocket(`${WS_BASE}?scanId=${scanId}`);
+  onEvent: (event: { type: string; data: unknown }) => void,
+  onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected') => void
+): () => void {
+  let ws: WebSocket;
+  let isClosed = false;
+  let retryCount = 0;
+  let ping: ReturnType<typeof setInterval>;
 
-  ws.onmessage = (e) => {
-    try { onEvent(JSON.parse(e.data)); } catch {}
+  const connect = () => {
+    if (isClosed) return;
+    onStatusChange?.('connecting');
+    ws = new WebSocket(`${WS_BASE}?scanId=${scanId}`);
+
+    ws.onopen = () => {
+      onStatusChange?.('connected');
+      retryCount = 0;
+    };
+
+    ws.onmessage = (e) => {
+      try { onEvent(JSON.parse(e.data)); } catch {}
+    };
+
+    ws.onerror = (e) => console.error('WS error:', e);
+
+    ping = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30_000);
+
+    ws.onclose = () => {
+      clearInterval(ping);
+      onStatusChange?.('disconnected');
+      if (!isClosed && retryCount < 5) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        retryCount++;
+        setTimeout(connect, delay);
+      }
+    };
   };
 
-  ws.onerror = (e) => console.error('WS error:', e);
+  connect();
 
-  // Keepalive ping
-  const ping = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'ping' }));
-    }
-  }, 30_000);
-
-  ws.onclose = () => clearInterval(ping);
-
-  return ws;
+  return () => {
+    isClosed = true;
+    if (ws) ws.close();
+    clearInterval(ping);
+  };
 }

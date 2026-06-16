@@ -16,12 +16,13 @@ export function ScanDetailPage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [showChat, setShowChat] = useState(false);
   const [severityFilter, setSeverityFilter] = useState('');
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
 
   const { data: scan, refetch: refetchScan } = useQuery({
     queryKey: ['scan', id],
     queryFn: () => scansApi.get(id!),
-    refetchInterval: (query: any) =>
-      query?.state?.data?.status === 'running' || query?.state?.data?.status === 'pending' ? 3000 : false,
+    refetchInterval: (data: any) =>
+      data?.status === 'running' || data?.status === 'pending' ? 3000 : false,
   });
 
   const { data: vulns, refetch: refetchVulns } = useQuery({
@@ -41,23 +42,28 @@ export function ScanDetailPage() {
   useEffect(() => {
     if (!id || scan?.status === 'completed' || scan?.status === 'failed') return;
 
-    wsRef.current = connectScanWS(id, (event) => {
-      if (event.type === 'scan:progress') {
-        const msg = (event.data as any)?.message;
-        if (msg) setLogs((prev) => [...prev.slice(-99), msg]);
-      }
-      if (event.type === 'scan:completed' || event.type === 'scan:failed') {
-        refetchScan();
-        refetchVulns();
-        queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      }
-      if (event.type === 'scan:vuln_found') {
-        const v = event.data as any;
-        setLogs((prev) => [...prev.slice(-99), `🚨 Found: ${v.severity} - ${v.title}`]);
-      }
-    });
+    const cleanup = connectScanWS(
+      id,
+      (event) => {
+        if (event.type === 'scan:progress') {
+          const msg = (event.data as any)?.message;
+          if (msg) setLogs((prev) => [...prev.slice(-99), msg]);
+        }
+        if (event.type === 'scan:completed' || event.type === 'scan:failed') {
+          refetchScan();
+          refetchVulns();
+          queryClient.invalidateQueries({ queryKey: ['analytics'] });
+        }
+        if (event.type === 'scan:vuln_found') {
+          const v = event.data as any;
+          setLogs((prev) => [...prev.slice(-99), `🚨 Found: ${v.severity} - ${v.title}`]);
+          refetchVulns();
+        }
+      },
+      (status) => setWsStatus(status)
+    );
 
-    return () => wsRef.current?.close();
+    return cleanup;
   }, [id, scan?.status]);
 
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -136,6 +142,11 @@ export function ScanDetailPage() {
             <h1 className="text-xl font-bold text-gray-900 break-all">{scan.target_url}</h1>
             <div className="mt-1 flex items-center gap-3">
               <StatusBadge status={scan.status} />
+              {isRunning && (
+                <span className={`text-xs font-semibold ${wsStatus === 'connected' ? 'text-green-500' : wsStatus === 'connecting' ? 'text-yellow-500' : 'text-red-500'}`}>
+                  {wsStatus === 'connected' ? '🟢 Live' : wsStatus === 'connecting' ? '🟡 Connecting...' : '🔴 Disconnected'}
+                </span>
+              )}
               {scan.completed_at && (
                 <span className="text-xs text-gray-400">
                   Completed {new Date(scan.completed_at).toLocaleString()}
@@ -220,14 +231,21 @@ export function ScanDetailPage() {
             {logs.length === 0 ? (
               <div className="text-gray-500 animate-pulse">Initializing connection to target payload...</div>
             ) : (
-              logs.map((log, i) => (
-                <div key={i} className="flex">
-                  <span className="text-green-600 mr-2 opacity-50">&gt;</span>
-                  <span className={log.includes('🚨 Found') ? 'text-red-500 font-bold' : ''}>
-                    {log}
-                  </span>
-                </div>
-              ))
+              logs.map((log, i) => {
+                let colorClass = 'text-green-400';
+                if (log.includes('🚨 Found') || log.includes('Failed')) colorClass = 'text-red-500 font-bold';
+                else if (log.includes('Testing') || log.includes('Scanning')) colorClass = 'text-yellow-400';
+                else if (log.includes('Completed') || log.includes('Success')) colorClass = 'text-green-500 font-bold';
+                
+                return (
+                  <div key={i} className="flex">
+                    <span className="text-green-600 mr-2 opacity-50">&gt;</span>
+                    <span className={colorClass}>
+                      {log}
+                    </span>
+                  </div>
+                );
+              })
             )}
             <div ref={terminalEndRef} />
             <div className="animate-pulse text-green-500 mt-2">_</div>

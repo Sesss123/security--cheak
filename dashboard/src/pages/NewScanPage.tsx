@@ -85,7 +85,7 @@ export function NewScanPage() {
             <Globe className="mr-1 inline h-4 w-4" /> Target URL
           </label>
           <input
-            type="url"
+            type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
@@ -146,18 +146,20 @@ export function NewScanPage() {
           </label>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600">Port Range</label>
-              <select
-                value={portRange}
-                onChange={(e) => setPortRange(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="Common">Common (Top 100)</option>
-                <option value="Extended">Extended (Top 1024)</option>
-                <option value="Full">Full (All 65535)</option>
-              </select>
-            </div>
+            {modules.includes('port_scan') && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Port Range</label>
+                <select
+                  value={portRange}
+                  onChange={(e) => setPortRange(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="Common">Common (Top 100)</option>
+                  <option value="Extended">Extended (Top 1024)</option>
+                  <option value="Full">Full (All 65535)</option>
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-gray-600">

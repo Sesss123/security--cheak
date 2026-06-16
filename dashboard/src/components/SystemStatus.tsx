@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../services/api';
 import { Server, Cpu } from 'lucide-react';
 
 interface HealthResponse {
@@ -14,10 +14,7 @@ export function SystemStatus() {
   useEffect(() => {
     const fetchHealth = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const res = await axios.get('/api/health', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await api.get('/health');
         setHealth(res.data);
       } catch (error) {
         setHealth({ api: 'offline', worker: 'offline', activeWorkers: 0 });
