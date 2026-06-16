@@ -23,6 +23,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - RABBITMQ_URL=amqp://rabbitmq:5672
       - SCANNER_BIN=/scanner/scanner
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost,http://localhost:5173
     depends_on:
       - postgres
       - redis
@@ -46,6 +47,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - RABBITMQ_URL=amqp://rabbitmq:5672
       - SCANNER_BIN=/scanner/scanner
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost,http://localhost:5173
     depends_on:
       - postgres
       - redis
