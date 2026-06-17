@@ -31,7 +31,8 @@ export type ScanType =
   | 'api'
   | 'container'
   | 'cloud'
-  | 'ctf_scan';
+  | 'ctf_scan'
+  | 'smart_scan';
 
 export interface ScanOptions {
   rate_limit: number;
@@ -39,6 +40,7 @@ export interface ScanOptions {
   follow_redirects: boolean;
   max_depth: number;
   port_range: 'Common' | 'Extended' | 'Full';
+  framework?: string;
 }
 
 export interface CreateScanRequest {

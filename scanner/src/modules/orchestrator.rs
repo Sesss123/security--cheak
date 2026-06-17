@@ -16,6 +16,7 @@ use crate::modules::{
     waf_detector::WafDetector,
     cloud_scanner::CloudScanner,
     api_fuzzer::ApiFuzzer,
+    smart_scanner::SmartScanner,
 };
 use crate::models::vulnerability::{Vulnerability, VulnCategory, OwaspCategory};
 use crate::models::scan::Severity;
@@ -193,13 +194,26 @@ impl ScanOrchestrator {
             None
         };
 
+        let smart_fut = async {
+            if request.scan_types.contains(&ScanType::SmartScan) {
+                if let Some(framework) = &request.options.framework {
+                    info!("Running Smart Web Scan for framework: {}", framework);
+                    let scanner = SmartScanner::new(target_url_ref.clone(), framework.clone());
+                    return Some(scanner.run().await);
+                } else {
+                    info!("Smart scan skipped: no framework specified");
+                }
+            }
+            None
+        };
+
         // ── Phase 2: Await All Futures Concurrently ───────────────────────
         let (
             port_res, ssl_res, headers_res, cors_res, vuln_res, ctf_res, sast_res,
-            asset_res, recon_res, waf_res, cloud_res, api_fuzzer_res
+            asset_res, recon_res, waf_res, cloud_res, api_fuzzer_res, smart_res
         ) = tokio::join!(
             port_fut, ssl_fut, headers_fut, cors_fut, vuln_fut, ctf_fut, sast_fut,
-            asset_fut, recon_fut, waf_fut, cloud_fut, api_fuzzer_fut
+            asset_fut, recon_fut, waf_fut, cloud_fut, api_fuzzer_fut, smart_fut
         );
 
         // ── Phase 3: Process Results ──────────────────────────────────────
@@ -313,6 +327,7 @@ impl ScanOrchestrator {
         if let Some(vulns) = waf_res { result.vulnerabilities.extend(vulns); }
         if let Some(vulns) = cloud_res { result.vulnerabilities.extend(vulns); }
         if let Some(vulns) = api_fuzzer_res { result.vulnerabilities.extend(vulns); }
+        if let Some(vulns) = smart_res { result.vulnerabilities.extend(vulns); }
 
         // ── Phase 4: Threat Intel Enrichment ─────────────────────────────
         info!("Running Threat Intel Enrichment...");

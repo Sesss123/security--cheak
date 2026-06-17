@@ -42,6 +42,7 @@ pub enum ScanType {
     ApiFuzzer,
     AssetDiscovery,
     Recon,
+    SmartScan,
 }
 
 /// Options to control scan behavior
@@ -61,6 +62,8 @@ pub struct ScanOptions {
     pub port_range: PortRange,
     /// Allow invalid TLS certificates
     pub allow_invalid_certs: bool,
+    /// Framework for smart scan profiling
+    pub framework: Option<String>,
 }
 
 impl Default for ScanOptions {
@@ -73,6 +76,7 @@ impl Default for ScanOptions {
             max_depth: 3,
             port_range: PortRange::Common,
             allow_invalid_certs: false,
+            framework: None,
         }
     }
 }

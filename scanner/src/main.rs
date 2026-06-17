@@ -43,6 +43,10 @@ struct Cli {
     /// Allow invalid TLS certificates
     #[arg(long)]
     allow_invalid_certs: bool,
+
+    /// Framework to scan for smart scans (e.g. wordpress, laravel)
+    #[arg(long)]
+    framework: Option<String>,
 }
 
 #[derive(Debug, Clone, ValueEnum, PartialEq)]
@@ -72,6 +76,8 @@ enum ScanModule {
     Ctf,
     Asset,
     Recon,
+    #[value(name = "smart-scan")]
+    SmartScan,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -143,6 +149,7 @@ async fn main() -> Result<()> {
             ScanModule::Ctf      => vec![ScanType::CtfScan],
             ScanModule::Asset    => vec![ScanType::AssetDiscovery],
             ScanModule::Recon    => vec![ScanType::Recon],
+            ScanModule::SmartScan => vec![ScanType::SmartScan],
         }).collect()
     };
 
@@ -160,6 +167,7 @@ async fn main() -> Result<()> {
             timeout_secs: cli.timeout,
             port_range,
             allow_invalid_certs: cli.allow_invalid_certs,
+            framework: cli.framework.clone(),
             ..Default::default()
         },
     };

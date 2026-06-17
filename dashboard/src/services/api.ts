@@ -43,6 +43,10 @@ export const scansApi = {
     scan_types: string[];
     options?: Record<string, unknown>;
   }) => api.post('/scans', body).then((r) => r.data),
+  createSmart: (body: {
+    target_url: string;
+    framework: string;
+  }) => api.post('/scans/smart', body).then((r) => r.data),
   delete: (id: string) =>
     api.delete(`/scans/${id}`).then((r) => r.data),
   vulnerabilities: (id: string, severity?: string) =>

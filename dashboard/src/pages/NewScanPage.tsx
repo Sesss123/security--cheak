@@ -30,6 +30,8 @@ const SCAN_MODULES = [
 export function NewScanPage() {
   const navigate = useNavigate();
   const [url, setUrl]           = useState('');
+  const [scanMode, setScanMode] = useState<'standard' | 'smart'>('standard');
+  const [framework, setFramework] = useState<'wordpress' | 'laravel'>('wordpress');
   const [modules, setModules]   = useState<string[]>(['security_headers', 'ssl_analysis', 'info_disclosure']);
   const [portRange, setPortRange] = useState('Common');
   const [rateLimit, setRateLimit] = useState(10);
@@ -50,18 +52,26 @@ export function NewScanPage() {
     setError('');
 
     if (!url) return setError('Target URL is required');
-    if (modules.length === 0) return setError('Select at least one scan module');
 
     try {
       setLoading(true);
-      const scan = await scansApi.create({
-        target_url: url,
-        scan_types: modules,
-        options: {
-          port_range: portRange,
-          rate_limit: rateLimit,
-        },
-      });
+      let scan;
+      if (scanMode === 'smart') {
+        scan = await scansApi.createSmart({
+          target_url: url,
+          framework,
+        });
+      } else {
+        if (modules.length === 0) return setError('Select at least one scan module');
+        scan = await scansApi.create({
+          target_url: url,
+          scan_types: modules,
+          options: {
+            port_range: portRange,
+            rate_limit: rateLimit,
+          },
+        });
+      }
       toast.success('Scan started!');
       navigate(`/scans/${scan.id}`);
     } catch (err: any) {
@@ -78,17 +88,43 @@ export function NewScanPage() {
         <p className="text-sm text-gray-500">Configure and launch an AI-powered security assessment</p>
       </div>
 
+      {/* Tab Selector */}
+      <div className="mb-6 flex rounded-xl border border-gray-200 bg-white p-1">
+        <button
+          type="button"
+          onClick={() => setScanMode('standard')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+            scanMode === 'standard'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+          }`}
+        >
+          <Shield className="h-4 w-4" /> Standard Scan
+        </button>
+        <button
+          type="button"
+          onClick={() => setScanMode('smart')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 ${
+            scanMode === 'smart'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+          }`}
+        >
+          <Zap className="h-4 w-4" /> Smart Web Scan
+        </button>
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Target URL */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <label className="mb-1 block text-sm font-semibold text-gray-700">
-            <Globe className="mr-1 inline h-4 w-4" /> Target URL
+            <Globe className="mr-1 inline h-4 w-4 text-gray-500" /> Target URL
           </label>
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com"
+            placeholder={scanMode === 'smart' ? 'https://example.com' : 'https://example.com'}
             className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <p className="mt-1 text-xs text-gray-400">
@@ -96,88 +132,137 @@ export function NewScanPage() {
           </p>
         </div>
 
-        {/* Scan modules */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <div className="mb-3 flex items-center justify-between">
-            <label className="text-sm font-semibold text-gray-700">
-              <Shield className="mr-1 inline h-4 w-4" /> Scan Modules
+        {scanMode === 'smart' ? (
+          /* Smart Scan Options */
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-300">
+            <label className="mb-3 block text-sm font-semibold text-gray-700">
+              <Zap className="mr-1 inline h-4 w-4 text-indigo-500" /> Target Web Framework
             </label>
-            <div className="flex gap-3 text-xs">
-              <button type="button" onClick={selectAll} className="text-indigo-600 hover:underline">
-                Select all
-              </button>
-              <button type="button" onClick={clearAll} className="text-gray-500 hover:underline">
-                Clear
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {SCAN_MODULES.map((m) => (
-              <label
-                key={m.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-                  modules.includes(m.id)
-                    ? 'border-indigo-300 bg-indigo-50'
-                    : 'border-gray-200 hover:border-gray-300'
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setFramework('wordpress')}
+                className={`group flex flex-col items-center gap-3 rounded-xl border p-5 transition-all duration-300 text-left ${
+                  framework === 'wordpress'
+                    ? 'border-indigo-500 bg-indigo-50/50 ring-2 ring-indigo-500/20'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={modules.includes(m.id)}
-                  onChange={() => toggleModule(m.id)}
-                  className="mt-0.5 accent-indigo-600"
-                />
-                <div>
-                  <div className="text-sm font-medium text-gray-800">
-                    {m.icon} {m.label}
-                  </div>
-                  <div className="text-xs text-gray-500">{m.desc}</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-2xl transition-transform duration-300 group-hover:scale-110">
+                  🌐
                 </div>
-              </label>
-            ))}
-          </div>
-        </div>
+                <div className="text-center">
+                  <span className="block text-sm font-semibold text-gray-800">WordPress</span>
+                  <span className="mt-1 block text-xs text-gray-400">Scan themes, plugins, and XML-RPC configurations</span>
+                </div>
+              </button>
 
-        {/* Options */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <label className="mb-3 block text-sm font-semibold text-gray-700">
-            <Zap className="mr-1 inline h-4 w-4" /> Scan Options
-          </label>
-
-          <div className="grid grid-cols-2 gap-4">
-            {modules.includes('port_scan') && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600">Port Range</label>
-                <select
-                  value={portRange}
-                  onChange={(e) => setPortRange(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="Common">Common (Top 100)</option>
-                  <option value="Extended">Extended (Top 1024)</option>
-                  <option value="Full">Full (All 65535)</option>
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600">
-                Rate Limit (req/s): {rateLimit}
-              </label>
-              <input
-                type="range"
-                min={1} max={50}
-                value={rateLimit}
-                onChange={(e) => setRateLimit(parseInt(e.target.value))}
-                className="mt-2 w-full accent-indigo-600"
-              />
+              <button
+                type="button"
+                onClick={() => setFramework('laravel')}
+                className={`group flex flex-col items-center gap-3 rounded-xl border p-5 transition-all duration-300 text-left ${
+                  framework === 'laravel'
+                    ? 'border-indigo-500 bg-indigo-50/50 ring-2 ring-indigo-500/20'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-2xl transition-transform duration-300 group-hover:scale-110">
+                  🔥
+                </div>
+                <div className="text-center">
+                  <span className="block text-sm font-semibold text-gray-800">Laravel</span>
+                  <span className="mt-1 block text-xs text-gray-400">Scan exposes env leaks, debugger configuration issues</span>
+                </div>
+              </button>
             </div>
           </div>
-        </div>
+        ) : (
+          /* Standard Scan Options */
+          <>
+            {/* Scan modules */}
+            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <label className="text-sm font-semibold text-gray-700">
+                  <Shield className="mr-1 inline h-4 w-4 text-gray-500" /> Scan Modules
+                </label>
+                <div className="flex gap-3 text-xs">
+                  <button type="button" onClick={selectAll} className="text-indigo-600 hover:underline">
+                    Select all
+                  </button>
+                  <button type="button" onClick={clearAll} className="text-gray-500 hover:underline">
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {SCAN_MODULES.map((m) => (
+                  <label
+                    key={m.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      modules.includes(m.id)
+                        ? 'border-indigo-300 bg-indigo-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={modules.includes(m.id)}
+                      onChange={() => toggleModule(m.id)}
+                      className="mt-0.5 accent-indigo-600"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">
+                        {m.icon} {m.label}
+                      </div>
+                      <div className="text-xs text-gray-500">{m.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+              <label className="mb-3 block text-sm font-semibold text-gray-700">
+                <Zap className="mr-1 inline h-4 w-4 text-gray-500" /> Scan Options
+              </label>
+
+              <div className="grid grid-cols-2 gap-4">
+                {modules.includes('port_scan') && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600">Port Range</label>
+                    <select
+                      value={portRange}
+                      onChange={(e) => setPortRange(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="Common">Common (Top 100)</option>
+                      <option value="Extended">Extended (Top 1024)</option>
+                      <option value="Full">Full (All 65535)</option>
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600">
+                    Rate Limit (req/s): {rateLimit}
+                  </label>
+                  <input
+                    type="range"
+                    min={1} max={50}
+                    value={rateLimit}
+                    onChange={(e) => setRateLimit(parseInt(e.target.value))}
+                    className="mt-2 w-full accent-indigo-600"
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 animate-shake">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             {error}
           </div>
@@ -186,9 +271,9 @@ export function NewScanPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="w-full rounded-lg bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 shadow-lg hover:shadow-indigo-500/20 transition-all duration-300"
         >
-          {loading ? '🚀 Starting Scan...' : '🔍 Start Security Scan'}
+          {loading ? '🚀 Starting Scan...' : scanMode === 'smart' ? `🔍 Start Smart ${framework.charAt(0).toUpperCase() + framework.slice(1)} Scan` : '🔍 Start Security Scan'}
         </button>
       </form>
     </div>

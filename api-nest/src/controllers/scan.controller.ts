@@ -7,6 +7,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { ScannerService } from '../services/scanner.service';
 import { AiService } from '../services/ai.service';
 import { ScanGateway } from '../gateways/scan.gateway';
+import { SmartWebService } from '../scanners/smart-web/smart-web.service';
 
 const CreateScanSchema = z.object({
   target_url: z.string().url(),
@@ -28,6 +29,7 @@ export class ScanController {
     private scannerService: ScannerService,
     private aiService: AiService,
     private scanGateway: ScanGateway,
+    private smartWebService: SmartWebService,
   ) {}
 
   // [HIGH] SSRF Protection: Check if hostname is internal/private
@@ -72,6 +74,37 @@ export class ScanController {
     } catch (err: any) {
       if (err.name === 'ZodError') return res.status(HttpStatus.BAD_REQUEST).json({ error: err.errors });
       return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Failed to create scan' });
+    }
+  }
+
+  @Post('smart')
+  async createSmartScan(@Body() bodyData: any, @Req() req: any, @Res() res: Response) {
+    try {
+      const { target_url, framework } = bodyData;
+      if (!target_url) {
+        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Target URL is required' });
+      }
+      const fwLower = framework?.toLowerCase();
+      if (!fwLower || !['wordpress', 'laravel'].includes(fwLower)) {
+        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Framework must be wordpress or laravel' });
+      }
+
+      if (this.isPrivateHost(target_url)) {
+        return res.status(HttpStatus.FORBIDDEN).json({ error: 'Scanning private or internal IP addresses is not allowed.' });
+      }
+
+      const scan = await this.smartWebService.triggerSmartScan(req.user.userId, target_url, fwLower);
+
+      // Audit Logging
+      await this.db.query(
+        `INSERT INTO scan_audit_logs (user_id, scan_id, target_url, action, ip_address)
+         VALUES ($1, $2, $3, 'CREATE_SMART_SCAN', $4)`,
+        [req.user.userId, scan.id, target_url, req.ip]
+      ).catch(console.error);
+
+      return res.status(HttpStatus.ACCEPTED).json(scan);
+    } catch (err: any) {
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Failed to create smart scan' });
     }
   }
 

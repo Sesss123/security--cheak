@@ -84,6 +84,7 @@ export class ScannerWorker extends WorkerHost {
           'waf_detector': 'waf',
           'cloud_scanner': 'cloud',
           'api_fuzzer': 'api-fuzzer',
+          'smart_scan': 'smart-scan',
         };
         // [FIXED] Bug #3: Guard against empty rustScans.
         // If all selected scan_types are unknown/unmapped, rustScans will be an empty
@@ -106,6 +107,9 @@ export class ScannerWorker extends WorkerHost {
           '--scans', rustScans,
           '--json',
         ];
+        if (scan.options && scan.options.framework) {
+          args.push('--framework', scan.options.framework);
+        }
         rawResult = await this.runScannerProcess(scanId, args);
       }
 

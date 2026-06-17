@@ -71,17 +71,22 @@
 
 ---
 
+## 🎯 Phase 37: Smart Web Scan Integration (Completed)
+- [x] Implement NestJS API types & endpoints (`POST /api/scans/smart`)
+- [x] Implement NestJS worker mapping & pass `--framework` flag to Rust
+- [x] Implement Rust CLI `--framework` flag & `SmartScan` variant
+- [x] Implement Rust Orchestrator integration for `SmartScanner`
+- [x] Implement frontend client `createSmart` API method
+- [x] Implement frontend UI tab for Smart Web Scan on `NewScanPage`
+
+---
+
 ## ✅ Build Verification
 | Component | Status | Date |
 |-----------|--------|------|
 | 🦀 Rust Scanner | ✅ `cargo check` PASSED (3.43s, 0 errors) | 2026-06-17 |
 | 🟦 NestJS API | ✅ `npm run build` PASSED (0 errors) | 2026-06-17 |
 | ⚛️  Dashboard | ✅ `npm run dev` running (11h+) | 2026-06-17 |
-
----
-
-## ⏭️ Deferred
-- [ ] **#25** IDOR / Broken Access Control testing — major new scanner module, scheduled for Phase 37
 
 ---
 
