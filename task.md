@@ -1,7 +1,6 @@
 # Security Platform — Task Tracker
 **Last Updated:** 2026-06-17
 
----
 
 ## ✅ Completed Tasks
 
@@ -38,6 +37,14 @@
 - [x] Implement real HTTP checks for Laravel profile (`.env` file exposure, debug mode)
 - [x] Add Zod request schema validation in `POST /api/scans/smart` controller endpoint
 - [x] Clean up confusing naming of parameters in `SmartWebService` (`targetId` to `userId`)
+- [x] Redirect Rust tracing logger output to stderr (`logger.rs`) to prevent log message corruption of stdout JSON
+
+---
+
+### Phase 39: WebSocket Authentication Ticket System — Completed 2026-06-17
+- [x] Implement short-lived WebSocket ticket generation and validation in `ScanGateway`
+- [x] Expose `POST /api/scans/ws-ticket` endpoint in `ScanController`
+- [x] Update frontend dashboard `connectScanWS` client helper to request and pass the ticket
 
 ---
 

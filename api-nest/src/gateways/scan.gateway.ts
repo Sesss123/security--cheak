@@ -12,47 +12,56 @@ export class ScanGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(ScanGateway.name);
   private rooms = new Map<string, Set<WebSocket>>();
+  private tickets = new Map<string, { userId: string; expiresAt: number }>();
+
+  createTicket(userId: string): string {
+    const ticket = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    this.tickets.set(ticket, {
+      userId,
+      expiresAt: Date.now() + 15 * 1000, // 15 seconds expiration
+    });
+    
+    // Periodically clean up expired tickets to avoid memory leaks
+    if (this.tickets.size > 100) {
+      const now = Date.now();
+      for (const [t, data] of this.tickets.entries()) {
+        if (data.expiresAt < now) {
+          this.tickets.delete(t);
+        }
+      }
+    }
+
+    return ticket;
+  }
 
   handleConnection(client: WebSocket, ...args: any[]) {
     const req = args[0];
     const url = new URL(req.url, `http://${req.headers.host}`);
     const scanId = url.searchParams.get('scanId');
+    const ticket = url.searchParams.get('ticket');
 
     if (!scanId) {
       client.close(1008, 'scanId required');
       return;
     }
 
-    /**
-     * [FIX #29] WebSocket JWT auth — Authorization header ONLY.
-     *
-     * The previous code accepted the token via the URL query string:
-     *   ws://host/ws?scanId=xxx&token=yyy
-     * This causes the token to appear in:
-     *   - Web server access logs
-     *   - Browser history
-     *   - Referrer headers sent to third-party scripts
-     *
-     * Fix: accept ONLY the "Authorization: Bearer <token>" header.
-     * Frontend must send it via WebSocket sub-protocol or a custom header.
-     * (WS browser API doesn't support custom headers natively — use a
-     * one-time ticket system or Socket.IO auth payload for browser clients.)
-     */
-    try {
-      const authHeader = req.headers['authorization'];
-      const token = authHeader?.startsWith('Bearer ')
-        ? authHeader.slice(7)
-        : null;
+    if (!ticket) {
+      client.close(1008, 'ticket required');
+      return;
+    }
 
-      if (!token) throw new Error('Token missing — use Authorization: Bearer <token> header');
-      jwt.verify(token, process.env.JWT_SECRET as string);
-    } catch (err) {
-      this.logger.warn(`Rejected unauthorized WS connection for scan: ${scanId}`);
+    // Verify ticket
+    const ticketData = this.tickets.get(ticket);
+    if (!ticketData || ticketData.expiresAt < Date.now()) {
+      this.logger.warn(`Rejected invalid or expired WS ticket for scan: ${scanId}`);
       client.close(1008, 'Unauthorized');
       return;
     }
 
-    this.logger.log(`WS connected for scan: ${scanId}`);
+    // One-time use: delete ticket
+    this.tickets.delete(ticket);
+
+    this.logger.log(`WS connected for scan: ${scanId} (user: ${ticketData.userId})`);
     
     if (!this.rooms.has(scanId)) {
       this.rooms.set(scanId, new Set());

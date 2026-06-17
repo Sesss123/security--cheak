@@ -74,37 +74,52 @@ export function connectScanWS(
   let retryCount = 0;
   let ping: ReturnType<typeof setInterval>;
 
-  const connect = () => {
+  const connect = async () => {
     if (isClosed) return;
     onStatusChange?.('connecting');
-    ws = new WebSocket(`${WS_BASE}?scanId=${scanId}`);
 
-    ws.onopen = () => {
-      onStatusChange?.('connected');
-      retryCount = 0;
-    };
+    try {
+      // Fetch short-lived one-time WebSocket authentication ticket
+      const { ticket } = await api.post('/scans/ws-ticket').then((r) => r.data);
+      if (isClosed) return;
 
-    ws.onmessage = (e) => {
-      try { onEvent(JSON.parse(e.data)); } catch {}
-    };
+      ws = new WebSocket(`${WS_BASE}?scanId=${scanId}&ticket=${ticket}`);
 
-    ws.onerror = (e) => console.error('WS error:', e);
+      ws.onopen = () => {
+        onStatusChange?.('connected');
+        retryCount = 0;
+      };
 
-    ping = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 30_000);
+      ws.onmessage = (e) => {
+        try { onEvent(JSON.parse(e.data)); } catch {}
+      };
 
-    ws.onclose = () => {
-      clearInterval(ping);
+      ws.onerror = (e) => console.error('WS error:', e);
+
+      ping = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30_000);
+
+      ws.onclose = () => {
+        clearInterval(ping);
+        onStatusChange?.('disconnected');
+        if (!isClosed && retryCount < 5) {
+          const delay = Math.pow(2, retryCount) * 1000;
+          retryCount++;
+          setTimeout(connect, delay);
+        }
+      };
+    } catch (err) {
+      console.error('Failed to get WS ticket or connect:', err);
       onStatusChange?.('disconnected');
       if (!isClosed && retryCount < 5) {
         const delay = Math.pow(2, retryCount) * 1000;
         retryCount++;
         setTimeout(connect, delay);
       }
-    };
+    }
   };
 
   connect();

@@ -114,6 +114,16 @@ export class ScanController {
     }
   }
 
+  @Post('ws-ticket')
+  async getWsTicket(@Req() req: any, @Res() res: Response) {
+    try {
+      const ticket = this.scanGateway.createTicket(req.user.userId);
+      return res.json({ ticket });
+    } catch (err) {
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Failed to create WS ticket' });
+    }
+  }
+
   @Get()
   async getScans(@Query('page') queryPage: string, @Query('limit') queryLimit: string, @Req() req: any, @Res() res: Response) {
     const page  = parseInt(queryPage) || 1;
