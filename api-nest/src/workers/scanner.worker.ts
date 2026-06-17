@@ -8,7 +8,18 @@ import { Scan } from '../types';
 @Processor('scan-jobs')
 export class ScannerWorker extends WorkerHost {
   private readonly logger = new Logger(ScannerWorker.name);
-  private readonly SCANNER_BIN = process.env.SCANNER_BIN ?? (process.env.NODE_ENV === 'production' ? '/scanner/scanner' : '../scanner/target/release/scanner.exe');
+  
+  // [HIGH] Executable Path Whitelist
+  private getScannerBin(): string {
+    const defaultBin = process.env.NODE_ENV === 'production' ? '/scanner/scanner' : '../scanner/target/release/scanner.exe';
+    const envBin = process.env.SCANNER_BIN;
+    if (envBin && !['/scanner/scanner', '../scanner/target/release/scanner.exe'].includes(envBin)) {
+      this.logger.warn(`Untrusted SCANNER_BIN provided: ${envBin}. Falling back to default.`);
+      return defaultBin;
+    }
+    return envBin || defaultBin;
+  }
+  private readonly SCANNER_BIN = this.getScannerBin();
 
   constructor(
     @InjectQueue('scan-results') private resultQueue: Queue,
@@ -55,7 +66,8 @@ export class ScannerWorker extends WorkerHost {
           'cloud_scanner': 'cloud',
           'api_fuzzer': 'api-fuzzer'
         };
-        const rustScans = scan.scan_types.map(t => scanTypeMap[t] || t).join(',');
+        // [HIGH] CLI Args Sanitisation: Filter out any scan types not in the whitelist map
+        const rustScans = scan.scan_types.map(t => scanTypeMap[t]).filter(Boolean).join(',');
         
         const args = [
           '--target', scan.target_url,

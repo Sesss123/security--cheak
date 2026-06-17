@@ -12,11 +12,7 @@ pub struct XxeDetector {
 
 impl XxeDetector {
     pub fn new(base_url: String) -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .unwrap();
+        let client = crate::utils::http::get_global_client();
         Self { client, base_url }
     }
 

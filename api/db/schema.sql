@@ -78,7 +78,7 @@ CREATE INDEX idx_vulns_severity ON vulnerabilities(severity);
 CREATE TABLE IF NOT EXISTS reports (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   scan_id           UUID NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
-  user_id           UUID NOT NULL REFERENCES users(id),
+  user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title             TEXT NOT NULL,
   executive_summary TEXT,
   risk_rating       VARCHAR(20),
@@ -96,11 +96,16 @@ CREATE TABLE IF NOT EXISTS api_keys (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Seed: default admin user (password: admin123 - change in prod!) ──
-INSERT INTO users (email, password_hash, name, role)
-VALUES (
-  'admin@securityplatform.local',
-  '$2b$10$rQJ5qJ3z3z3z3z3z3z3z3uXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-  'Admin',
-  'admin'
-) ON CONFLICT DO NOTHING;
+-- ── Audit Logs ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS scan_audit_logs (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  scan_id     UUID REFERENCES scans(id) ON DELETE CASCADE,
+  target_url  TEXT NOT NULL,
+  action      VARCHAR(50) NOT NULL,
+  ip_address  VARCHAR(45),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_user_id ON scan_audit_logs(user_id);
+

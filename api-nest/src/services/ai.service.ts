@@ -11,7 +11,7 @@ export class AiService {
 
   constructor(private readonly contextBuilder: ContextBuilderService) {
     this.client = new OpenAI({
-      apiKey: process.env.GROQ_API_KEY || process.env.CLAUDE_API_KEY,
+      apiKey: process.env.GROQ_API_KEY,
       baseURL: 'https://api.groq.com/openai/v1',
     });
   }

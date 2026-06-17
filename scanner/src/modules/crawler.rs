@@ -11,10 +11,11 @@ pub struct DiscoveredForm {
     pub inputs: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CrawlResult {
     pub urls: HashSet<String>,
     pub forms: Vec<DiscoveredForm>,
+    pub scripts: Vec<String>,
 }
 
 pub struct Crawler {
@@ -25,11 +26,7 @@ pub struct Crawler {
 
 impl Crawler {
     pub fn new(base_url: String, max_depth: u32) -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .unwrap();
+        let client = crate::utils::http::get_global_client();
         Self {
             client,
             base_url,
@@ -42,6 +39,7 @@ impl Crawler {
         let mut visited = HashSet::new();
         let mut to_visit = vec![(self.base_url.clone(), 0)];
         let mut all_forms = vec![];
+        let mut all_scripts = vec![];
 
         while let Some((current_url, depth)) = to_visit.pop() {
             if depth > self.max_depth || visited.contains(&current_url) {
@@ -91,16 +89,27 @@ impl Crawler {
                                 });
                             }
                         }
+
+                        // Extract scripts
+                        let script_selector = Selector::parse("script[src]").unwrap();
+                        for script in document.select(&script_selector) {
+                            if let Some(src) = script.value().attr("src") {
+                                if let Some(resolved_src) = self.resolve_url(&current_url, src) {
+                                    all_scripts.push(resolved_src);
+                                }
+                            }
+                        }
                     }
                 }
                 Err(e) => warn!("Failed to fetch {}: {}", current_url, e),
             }
         }
 
-        info!("Crawl finished. Found {} URLs and {} forms.", visited.len(), all_forms.len());
+        info!("Crawl finished. Found {} URLs, {} forms, and {} scripts.", visited.len(), all_forms.len(), all_scripts.len());
         CrawlResult {
             urls: visited,
             forms: all_forms,
+            scripts: all_scripts,
         }
     }
 

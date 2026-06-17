@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ContinuousMonitorService } from './workers/continuous-monitor.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -21,6 +22,9 @@ import { CtfModule } from './ctf/ctf.module';
 import { ApiScannerModule } from './scanners/api-scanner/api-scanner.module';
 import { ContainerScannerModule } from './scanners/container-scanner/container-scanner.module';
 import { CloudScannerModule } from './scanners/cloud-scanner/cloud-scanner.module';
+import { AssetDiscoveryModule } from './scanners/asset-discovery/asset-discovery.module';
+import { ReconModule } from './scanners/recon/recon.module';
+import { SmartWebModule } from './scanners/smart-web/smart-web.module';
 import { RagModule } from './ai/rag/rag.module';
 import { AgentsModule } from './ai/agents/agents.module';
 @Module({
@@ -29,6 +33,9 @@ import { AgentsModule } from './ai/agents/agents.module';
     ApiScannerModule,
     ContainerScannerModule,
     CloudScannerModule,
+    AssetDiscoveryModule,
+    ReconModule,
+    SmartWebModule,
     CtfModule,
     RagModule,
     AgentsModule,
@@ -62,7 +69,8 @@ import { AgentsModule } from './ai/agents/agents.module';
     AlertService,
     MonitoringService,
     ScanGateway,
-    ResultAggregatorProcessor
+    ResultAggregatorProcessor,
+    ContinuousMonitorService
   ],
 })
 export class AppModule {}

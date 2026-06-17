@@ -18,5 +18,8 @@ pub mod graphql;
 pub mod waf_detector;
 pub mod cloud_scanner;
 pub mod api_fuzzer;
+pub mod asset_discovery;
+pub mod recon_engine;
+pub mod smart_scanner;
 
 pub use orchestrator::ScanOrchestrator;

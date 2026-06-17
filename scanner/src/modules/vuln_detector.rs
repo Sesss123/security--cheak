@@ -86,30 +86,48 @@ pub struct VulnDetector {
 
 impl VulnDetector {
     pub fn new(base_url: String) -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .expect("Failed to build HTTP client");
+        let client = crate::utils::http::get_global_client();
 
         Self { client, base_url }
     }
 
-    /// Run all vulnerability detection modules
-    pub async fn detect_all(&self) -> Vec<Vulnerability> {
+    /// Run vulnerability detection modules based on requested scan types
+    pub async fn detect_requested(&self, scan_types: &[crate::models::scan::ScanType]) -> Vec<Vulnerability> {
         info!("Starting vulnerability detection for {}", self.base_url);
         let mut vulns = vec![];
+        
+        use crate::models::scan::ScanType;
 
-        // 1. Run Recon (Crawler, Subdomains, Dir Bruteforce)
+        let run_crawler = scan_types.contains(&ScanType::Crawler)
+            || scan_types.contains(&ScanType::SqlInjection)
+            || scan_types.contains(&ScanType::Xss)
+            || scan_types.contains(&ScanType::OpenRedirect)
+            || scan_types.contains(&ScanType::Ssrf)
+            || scan_types.contains(&ScanType::Xxe)
+            || scan_types.contains(&ScanType::Csrf)
+            || scan_types.contains(&ScanType::Upload)
+            || scan_types.contains(&ScanType::DomXss)
+            || scan_types.contains(&ScanType::Graphql);
+
+        let run_subdomains = scan_types.contains(&ScanType::Crawler) || scan_types.contains(&ScanType::InfoDisclosure);
+        let run_dir_bf = scan_types.contains(&ScanType::DirBruteforce);
+
+        // 1. Run Recon (Crawler, Subdomains, Dir Bruteforce) conditionally
         let crawler = Crawler::new(self.base_url.clone(), 2);
         let sub_enum = SubdomainEnumerator::new();
         let dir_bf = DirBruteforcer::new(self.base_url.clone());
 
-        let (crawl_result, subdomains, hidden_dirs) = tokio::join!(
-            crawler.crawl_site(),
-            sub_enum.enumerate(&self.base_url),
-            dir_bf.bruteforce()
-        );
+        let crawl_future = async {
+            if run_crawler { crawler.crawl_site().await } else { crate::modules::crawler::CrawlResult::default() }
+        };
+        let sub_future = async {
+            if run_subdomains { sub_enum.enumerate(&self.base_url).await } else { vec![] }
+        };
+        let dir_future = async {
+            if run_dir_bf { dir_bf.bruteforce().await } else { vec![] }
+        };
+
+        let (crawl_result, subdomains, hidden_dirs) = tokio::join!(crawl_future, sub_future, dir_future);
 
         // Add Recon findings as Informational "Vulnerabilities"
         for sub in subdomains {
@@ -132,16 +150,28 @@ impl VulnDetector {
             ));
         }
 
-        // 2. Run Vulnerability Checks using dynamic crawler data
+        // 2. Run Vulnerability Checks using dynamic crawler data conditionally
+        let sqli_future = async {
+            if scan_types.contains(&ScanType::SqlInjection) { self.check_sql_injection(&crawl_result).await } else { vec![] }
+        };
+        let xss_future = async {
+            if scan_types.contains(&ScanType::Xss) { self.check_xss(&crawl_result).await } else { vec![] }
+        };
+        let redirect_future = async {
+            if scan_types.contains(&ScanType::OpenRedirect) { self.check_open_redirect(&crawl_result).await } else { vec![] }
+        };
+        let info_future = async {
+            if scan_types.contains(&ScanType::InfoDisclosure) { self.check_information_disclosure().await } else { vec![] }
+        };
+        let jwt_future = async {
+            if scan_types.contains(&ScanType::JwtAnalysis) { self.check_jwt_weaknesses().await } else { vec![] }
+        };
+
         let (sqli_vulns, xss_vulns, redirect_vulns, info_vulns, jwt_vulns) = tokio::join!(
-            self.check_sql_injection(&crawl_result),
-            self.check_xss(&crawl_result),
-            self.check_open_redirect(&crawl_result),
-            self.check_information_disclosure(),
-            self.check_jwt_weaknesses(),
+            sqli_future, xss_future, redirect_future, info_future, jwt_future
         );
 
-        // 3. Run Advanced Attack Modules (Phase B)
+        // 3. Run Advanced Attack Modules (Phase B) conditionally
         let ssrf = SsrfDetector::new(self.base_url.clone());
         let xxe = XxeDetector::new(self.base_url.clone());
         let csrf = CsrfDetector::new(self.base_url.clone());
@@ -154,19 +184,22 @@ impl VulnDetector {
 
         let target_urls: Vec<String> = crawl_result.urls.clone().into_iter().collect();
 
+        let ssrf_future = async { if scan_types.contains(&ScanType::Ssrf) { ssrf.detect(&crawl_result).await } else { vec![] } };
+        let xxe_future = async { if scan_types.contains(&ScanType::Xxe) { xxe.detect(&crawl_result).await } else { vec![] } };
+        let csrf_future = async { if scan_types.contains(&ScanType::Csrf) { csrf.detect(&crawl_result) } else { vec![] } };
+        let upload_future = async { if scan_types.contains(&ScanType::Upload) { upload.detect(&crawl_result).await } else { vec![] } };
+        let dom_xss_future = async { if scan_types.contains(&ScanType::DomXss) { dom_xss.scan(&target_urls).await } else { vec![] } };
+        let graphql_future = async { if scan_types.contains(&ScanType::Graphql) { graphql.scan(&target_urls).await } else { vec![] } };
+        let waf_future = async { if scan_types.contains(&ScanType::WafDetector) { waf_det.detect().await } else { vec![] } };
+        let cloud_future = async { if scan_types.contains(&ScanType::CloudScanner) { cloud_scan.detect().await } else { vec![] } };
+        let api_future = async { if scan_types.contains(&ScanType::ApiFuzzer) || scan_types.contains(&ScanType::ApiSecurity) { api_fuzz.detect().await } else { vec![] } };
+
         let (
             ssrf_vulns, xxe_vulns, csrf_vulns, upload_vulns, 
             dom_xss_vulns, graphql_vulns, waf_vulns, cloud_vulns, api_vulns
         ) = tokio::join!(
-            ssrf.detect(&crawl_result),
-            xxe.detect(&crawl_result),
-            async { csrf.detect(&crawl_result) }, // CSRF is synchronous
-            upload.detect(&crawl_result),
-            dom_xss.scan(&target_urls),
-            graphql.scan(&target_urls),
-            waf_det.detect(),
-            cloud_scan.detect(),
-            api_fuzz.detect()
+            ssrf_future, xxe_future, csrf_future, upload_future,
+            dom_xss_future, graphql_future, waf_future, cloud_future, api_future
         );
 
         vulns.extend(sqli_vulns);
@@ -214,6 +247,18 @@ impl VulnDetector {
         }
 
         for base_test_url in &test_urls {
+            // [FALSE POSITIVE FIX] Check base request first for existing error strings
+            let mut base_errors_present = std::collections::HashSet::new();
+            if let Ok(resp) = self.client.get(base_test_url).send().await {
+                if let Ok(body) = resp.text().await {
+                    for pattern in SQL_ERROR_PATTERNS {
+                        if body.to_lowercase().contains(&pattern.to_lowercase()) {
+                            base_errors_present.insert(pattern);
+                        }
+                    }
+                }
+            }
+
             for payload in SQLI_PAYLOADS {
                 let test_url = format!("{}{}", base_test_url, urlencoding::encode(payload));
 
@@ -221,7 +266,7 @@ impl VulnDetector {
                     Ok(resp) => {
                         if let Ok(body) = resp.text().await {
                             for pattern in SQL_ERROR_PATTERNS {
-                                if body.to_lowercase().contains(&pattern.to_lowercase()) {
+                                if !base_errors_present.contains(pattern) && body.to_lowercase().contains(&pattern.to_lowercase()) {
                                     warn!("SQL Injection found at {} with payload: {}", test_url, payload);
 
                                     let vuln = Vulnerability::new(
@@ -360,8 +405,9 @@ impl VulnDetector {
                 // Use no-follow client to detect redirects
                 let no_follow_client = Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
-                    .danger_accept_invalid_certs(true)
+                    // .danger_accept_invalid_certs(true) // Removed per security review
                     .timeout(std::time::Duration::from_secs(10))
+                    .connect_timeout(std::time::Duration::from_secs(5))
                     .build()
                     .unwrap();
 

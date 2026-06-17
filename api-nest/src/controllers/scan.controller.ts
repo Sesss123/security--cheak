@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { AuthGuard } from '../auth/auth.guard';
 import { ScannerService } from '../services/scanner.service';
 import { AiService } from '../services/ai.service';
+import { ScanGateway } from '../gateways/scan.gateway';
 
 const CreateScanSchema = z.object({
   target_url: z.string().url(),
@@ -26,13 +27,43 @@ export class ScanController {
     @Inject(DB_POOL) private db: Pool,
     private scannerService: ScannerService,
     private aiService: AiService,
+    private scanGateway: ScanGateway,
   ) {}
+
+  // [HIGH] SSRF Protection: Check if hostname is internal/private
+  private isPrivateHost(targetUrl: string): boolean {
+    try {
+      const url = new URL(targetUrl);
+      const host = url.hostname;
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+      if (host.startsWith('10.')) return true;
+      if (host.startsWith('192.168.')) return true;
+      if (host.startsWith('169.254.')) return true; // AWS Metadata
+      // 172.16.x.x - 172.31.x.x
+      if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) return true;
+      return false;
+    } catch {
+      return true; // invalid url = treat as unsafe
+    }
+  }
 
   @Post()
   async createScan(@Body() bodyData: any, @Req() req: any, @Res() res: Response) {
     try {
       const body = CreateScanSchema.parse(bodyData);
+
+      if (this.isPrivateHost(body.target_url)) {
+        return res.status(HttpStatus.FORBIDDEN).json({ error: 'Scanning private or internal IP addresses is not allowed.' });
+      }
+
       const scan = await this.scannerService.createScan(req.user.userId, body as any);
+
+      // [LOW] Audit Logging
+      await this.db.query(
+        `INSERT INTO scan_audit_logs (user_id, scan_id, target_url, action, ip_address)
+         VALUES ($1, $2, $3, 'CREATE_SCAN', $4)`,
+        [req.user.userId, scan.id, body.target_url, req.ip]
+      ).catch(console.error);
 
       // Run scan async (don't await)
       this.scannerService.runScan(scan.id).catch(console.error);
@@ -47,7 +78,7 @@ export class ScanController {
   @Get()
   async getScans(@Query('page') queryPage: string, @Query('limit') queryLimit: string, @Req() req: any, @Res() res: Response) {
     const page  = parseInt(queryPage) || 1;
-    const limit = parseInt(queryLimit) || 20;
+    const limit = Math.min(parseInt(queryLimit) || 20, 200);
     const offset = (page - 1) * limit;
 
     const result = await this.db.query(
@@ -91,7 +122,7 @@ export class ScanController {
   @Get(':id/vulnerabilities')
   async getVulnerabilities(@Param('id') id: string, @Query('severity') severity: string, @Query('page') queryPage: string, @Query('limit') queryLimit: string, @Req() req: any, @Res() res: Response) {
     const page  = parseInt(queryPage) || 1;
-    const limit = parseInt(queryLimit) || 50;
+    const limit = Math.min(parseInt(queryLimit) || 50, 200);
     const offset = (page - 1) * limit;
     // Verify ownership
     const scan = await this.db.query(
@@ -192,6 +223,9 @@ export class ScanController {
     if (result.rows.length === 0) {
       return res.status(HttpStatus.NOT_FOUND).json({ error: 'Scan not found' });
     }
+
+    // [MEDIUM] Connection Cleanup
+    this.scanGateway.closeScanConnections(id);
 
     return res.json({ deleted: true });
   }

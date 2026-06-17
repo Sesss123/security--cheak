@@ -130,12 +130,7 @@ pub struct CtfScanner {
 
 impl CtfScanner {
     pub fn new(base_url: String) -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(10))
-            .user_agent("Mozilla/5.0 (CTF Scanner)")
-            .build()
-            .unwrap();
+        let client = crate::utils::http::get_global_client();
 
         Self { client, base_url: base_url.trim_end_matches('/').to_string() }
     }

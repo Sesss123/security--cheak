@@ -75,8 +75,8 @@ pub struct HeaderAnalyzer {
 impl HeaderAnalyzer {
     pub fn new() -> Self {
         let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(5))
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("Failed to build HTTP client");
@@ -253,8 +253,9 @@ impl HeaderAnalyzer {
 /// Analyze CORS configuration
 pub async fn analyze_cors(target_url: &str) -> Vec<String> {
     let client = Client::builder()
-        .danger_accept_invalid_certs(true)
+        // .danger_accept_invalid_certs(true)
         .timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(std::time::Duration::from_secs(5))
         .build()
         .unwrap();
 

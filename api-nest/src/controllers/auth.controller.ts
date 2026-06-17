@@ -20,6 +20,9 @@ const LoginSchema = z.object({
 
 @Controller('api/auth')
 export class AuthController {
+  // [MEDIUM] Brute-Force Protection
+  private loginAttempts = new Map<string, { attempts: number; lockUntil: number }>();
+
   constructor(@Inject(DB_POOL) private db: Pool) {}
 
   @Post('register')
@@ -53,12 +56,26 @@ export class AuthController {
     try {
       const body = LoginSchema.parse(bodyData);
 
+      const now = Date.now();
+      const record = this.loginAttempts.get(body.email);
+      if (record && record.lockUntil > now) {
+        return res.status(HttpStatus.TOO_MANY_REQUESTS).json({ error: 'Account temporarily locked due to too many failed attempts. Try again later.' });
+      }
+
       const result = await this.db.query('SELECT * FROM users WHERE email=$1', [body.email]);
       const user = result.rows[0];
 
       if (!user || !(await bcrypt.compare(body.password, user.password_hash))) {
+        // Increment failed attempts
+        const attempts = (record?.attempts || 0) + 1;
+        const lockUntil = attempts >= 5 ? now + 5 * 60 * 1000 : 0; // 5 mins lockout
+        this.loginAttempts.set(body.email, { attempts, lockUntil });
+
         return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Invalid email or password' });
       }
+
+      // Reset attempts on success
+      this.loginAttempts.delete(body.email);
 
       const token = this.signToken(user);
       return res.json({

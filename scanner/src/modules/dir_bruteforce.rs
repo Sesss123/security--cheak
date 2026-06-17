@@ -11,8 +11,9 @@ pub struct DirBruteforcer {
 impl DirBruteforcer {
     pub fn new(base_url: String) -> Self {
         let client = Client::builder()
-            .danger_accept_invalid_certs(true)
+            // .danger_accept_invalid_certs(true)
             .timeout(std::time::Duration::from_secs(5))
+            .connect_timeout(std::time::Duration::from_secs(3))
             // Do not follow redirects so we can detect 301/302 admin panel redirects
             .redirect(reqwest::redirect::Policy::none())
             .build()

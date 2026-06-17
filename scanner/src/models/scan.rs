@@ -40,6 +40,8 @@ pub enum ScanType {
     WafDetector,
     CloudScanner,
     ApiFuzzer,
+    AssetDiscovery,
+    Recon,
 }
 
 /// Options to control scan behavior
@@ -57,6 +59,8 @@ pub struct ScanOptions {
     pub max_depth: u32,
     /// Port range to scan
     pub port_range: PortRange,
+    /// Allow invalid TLS certificates
+    pub allow_invalid_certs: bool,
 }
 
 impl Default for ScanOptions {
@@ -68,6 +72,7 @@ impl Default for ScanOptions {
             custom_headers: vec![],
             max_depth: 3,
             port_range: PortRange::Common,
+            allow_invalid_certs: false,
         }
     }
 }
@@ -93,6 +98,8 @@ pub struct ScanResult {
     pub header_result: Option<HeaderResult>,
     pub vulnerabilities: Vec<Vulnerability>,
     pub summary: ScanSummary,
+    pub discovered_assets: Option<Vec<crate::modules::asset_discovery::DiscoveredAsset>>,
+    pub recon_data: Option<crate::modules::recon_engine::ReconData>,
 }
 
 impl ScanResult {
@@ -108,6 +115,8 @@ impl ScanResult {
             header_result: None,
             vulnerabilities: vec![],
             summary: ScanSummary::default(),
+            discovered_assets: None,
+            recon_data: None,
         }
     }
 }

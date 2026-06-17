@@ -36,4 +36,10 @@ export const ctfService = {
     });
     return res.data;
   },
+
+  // Code Analysis
+  analyzeCode: async (code: string) => {
+    const res = await api.post('/analyze-code', { code });
+    return res.data;
+  },
 };

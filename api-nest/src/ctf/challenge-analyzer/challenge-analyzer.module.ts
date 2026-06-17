@@ -3,6 +3,7 @@ import { ChallengeClassifierService } from './services/challenge-classifier.serv
 import { AiHintGeneratorService } from './services/ai-hint-generator.service';
 import { LearningRecommendationService } from './services/learning-recommendation.service';
 import { ChallengeAnalyzerService } from './services/challenge-analyzer.service';
+import { AdvancedCodeAnalyzerService } from './services/advanced-code-analyzer.service';
 
 @Module({
   providers: [
@@ -10,7 +11,8 @@ import { ChallengeAnalyzerService } from './services/challenge-analyzer.service'
     AiHintGeneratorService,
     LearningRecommendationService,
     ChallengeAnalyzerService,
+    AdvancedCodeAnalyzerService,
   ],
-  exports: [ChallengeAnalyzerService],
+  exports: [ChallengeAnalyzerService, AdvancedCodeAnalyzerService],
 })
 export class ChallengeAnalyzerModule {}

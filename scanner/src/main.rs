@@ -39,6 +39,10 @@ struct Cli {
     /// Output as JSON
     #[arg(long)]
     json: bool,
+
+    /// Allow invalid TLS certificates
+    #[arg(long)]
+    allow_invalid_certs: bool,
 }
 
 #[derive(Debug, Clone, ValueEnum, PartialEq)]
@@ -65,6 +69,9 @@ enum ScanModule {
     Waf,
     Cloud,
     ApiFuzzer,
+    Ctf,
+    Asset,
+    Recon,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -105,6 +112,9 @@ async fn main() -> Result<()> {
             ScanType::WafDetector,
             ScanType::CloudScanner,
             ScanType::ApiFuzzer,
+            ScanType::CtfScan,
+            ScanType::AssetDiscovery,
+            ScanType::Recon,
         ]
     } else {
         cli.scans.iter().flat_map(|s| match s {
@@ -130,6 +140,9 @@ async fn main() -> Result<()> {
             ScanModule::Waf      => vec![ScanType::WafDetector],
             ScanModule::Cloud    => vec![ScanType::CloudScanner],
             ScanModule::ApiFuzzer => vec![ScanType::ApiFuzzer],
+            ScanModule::Ctf      => vec![ScanType::CtfScan],
+            ScanModule::Asset    => vec![ScanType::AssetDiscovery],
+            ScanModule::Recon    => vec![ScanType::Recon],
         }).collect()
     };
 
@@ -146,6 +159,7 @@ async fn main() -> Result<()> {
             rate_limit: cli.rate_limit,
             timeout_secs: cli.timeout,
             port_range,
+            allow_invalid_certs: cli.allow_invalid_certs,
             ..Default::default()
         },
     };

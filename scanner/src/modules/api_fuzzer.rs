@@ -1,6 +1,5 @@
 use reqwest::Client;
 use tracing::{info, warn};
-use std::time::Duration;
 use crate::models::vulnerability::{Vulnerability, VulnCategory, Evidence, EvidenceType, OwaspCategory};
 use crate::models::scan::Severity;
 
@@ -11,11 +10,7 @@ pub struct ApiFuzzer {
 
 impl ApiFuzzer {
     pub fn new(base_url: String) -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap();
+        let client = crate::utils::http::get_global_client();
 
         Self { client, base_url: base_url.trim_end_matches('/').to_string() }
     }

@@ -2,6 +2,7 @@ import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDiscon
 import { Server, WebSocket } from 'ws';
 import { Injectable, Logger } from '@nestjs/common';
 import { WsEvent } from '../types';
+import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 @WebSocketGateway({ path: '/ws' })
@@ -19,6 +20,17 @@ export class ScanGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (!scanId) {
       client.close(1008, 'scanId required');
+      return;
+    }
+
+    // [CRITICAL] WebSocket Auth: Verify JWT token
+    try {
+      const token = req.headers['authorization']?.split(' ')[1] || url.searchParams.get('token');
+      if (!token) throw new Error('Token missing');
+      jwt.verify(token, process.env.JWT_SECRET as string);
+    } catch (err) {
+      this.logger.warn(`Rejected unauthorized WS connection for scan: ${scanId}`);
+      client.close(1008, 'Unauthorized');
       return;
     }
 
@@ -52,6 +64,19 @@ export class ScanGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (client.readyState === WebSocket.OPEN) {
         client.send(payload);
       }
+    }
+  }
+
+  // [MEDIUM] Connection Cleanup
+  public closeScanConnections(scanId: string): void {
+    const clients = this.rooms.get(scanId);
+    if (clients) {
+      for (const client of clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.close(1000, 'Scan finished or deleted');
+        }
+      }
+      this.rooms.delete(scanId);
     }
   }
 }

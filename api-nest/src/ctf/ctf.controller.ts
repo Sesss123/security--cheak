@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { SubdomainDiscoveryService } from './recon/services/subdomain-discovery.service';
 import { RagAnalysisService } from './knowledge-base/services/rag-analysis.service';
 import { FileAnalysisService } from './forensics/services/file-analysis.service';
+import { AdvancedCodeAnalyzerService } from './challenge-analyzer/services/advanced-code-analyzer.service';
 
 @Controller('ctf')
 export class CtfController {
@@ -10,6 +11,7 @@ export class CtfController {
     private readonly reconService: SubdomainDiscoveryService,
     private readonly ragService: RagAnalysisService,
     private readonly forensicsService: FileAnalysisService,
+    private readonly advancedCodeAnalyzerService: AdvancedCodeAnalyzerService,
   ) {}
 
   @Post('recon/subdomains')
@@ -27,4 +29,10 @@ export class CtfController {
   async uploadForensicsFile(@UploadedFile() file: Express.Multer.File) {
     return this.forensicsService.analyze(file.buffer);
   }
+
+  @Post('analyze-code')
+  async analyzeCode(@Body() data: { code: string }) {
+    return this.advancedCodeAnalyzerService.analyze(data.code);
+  }
 }
+

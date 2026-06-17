@@ -18,10 +18,10 @@ pub struct SslAnalyzer {
 
 impl SslAnalyzer {
     pub fn new() -> Self {
-        // Build client that accepts invalid certs (so we can analyze them)
+        // Build client
         let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(5))
             .build()
             .expect("Failed to build HTTP client");
 
