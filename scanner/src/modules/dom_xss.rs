@@ -1,10 +1,42 @@
-use std::sync::Arc;
-use headless_chrome::{Browser, LaunchOptions};
-use anyhow::Result;
-use tracing::{info, warn, error};
+// [FIXED] Bug #2: headless_chrome required a real Chromium binary that is not installed
+// in the Docker runtime image. Any scan including dom-xss crashed the entire Rust process.
+//
+// New approach: HTTP-based heuristic scanner that:
+//   1. Fetches the page HTML via reqwest (already a project dependency, zero new deps)
+//   2. Searches for dangerous DOM sink patterns combined with taint sources (location, search params)
+//   3. Reports findings as Medium severity with a note that manual confirmation is required.
+//
+// Trade-off: No JavaScript execution, so dynamically-injected sinks won't be detected.
+// This is intentional — a stable, deployable scanner beats a crashing headless one.
+
+use tracing::{info, warn};
+use regex::Regex;
 
 use crate::models::vulnerability::{Vulnerability, VulnCategory, OwaspCategory};
 use crate::models::scan::Severity;
+
+/// Heuristic patterns: (regex, human-readable description)
+/// Each pattern matches a dangerous sink combined with a taint source commonly
+/// found in DOM XSS vulnerabilities.
+const SINK_PATTERNS: &[(&str, &str)] = &[
+    // innerHTML + location sources
+    (r"innerHTML\s*=\s*[^;]*location", "innerHTML sink reading from location (hash/search/href)"),
+    (r"innerHTML\s*=\s*[^;]*decodeURI", "innerHTML sink with decoded URI value"),
+    (r"\.innerHTML\s*\+=[^;]*\w",      "innerHTML concatenation — potential unsanitised append"),
+
+    // document.write sources
+    (r"document\.write\s*\([^)]*location",  "document.write() with location-derived value"),
+    (r"document\.write\s*\([^)]*unescape",  "document.write() with unescape() — classic XSS pattern"),
+
+    // eval / Function sinks
+    (r"eval\s*\([^)]*location",    "eval() with location-derived value"),
+    (r"eval\s*\([^)]*search",      "eval() with URLSearchParams / location.search"),
+    (r"Function\s*\([^)]*location","new Function() constructor with location-derived value"),
+
+    // jQuery legacy sinks
+    (r#"\$\s*\([^)]*location\.hash"#, "jQuery selector with location.hash (DOM XSS via jQuery)"),
+    (r#"\.html\s*\([^)]*location"#,   "jQuery .html() with location-derived value"),
+];
 
 pub struct DomXssScanner {
     base_url: String,
@@ -15,108 +47,75 @@ impl DomXssScanner {
         Self { base_url }
     }
 
+    /// Scans up to 10 URLs for DOM XSS sink/source patterns via HTTP heuristics.
     pub async fn scan(&self, targets: &[String]) -> Vec<Vulnerability> {
         let mut vulnerabilities = Vec::new();
 
+        // Build target list: base URL first, then additional crawled targets
         let mut all_targets = vec![self.base_url.clone()];
         all_targets.extend_from_slice(targets);
-        all_targets.truncate(10); // Limit to 10 for performance
+        all_targets.truncate(10); // Cap for performance
 
-        // Typical DOM XSS payloads leveraging location.hash
-        let payloads = [
-            "#javascript:alert(document.domain)",
-            "#<script>alert(1)</script>",
-            "#\"><img src=x onerror=alert(1)>",
-        ];
+        // Pre-compile regex patterns once
+        let compiled: Vec<(Regex, &str)> = SINK_PATTERNS
+            .iter()
+            .filter_map(|(pat, desc)| Regex::new(pat).ok().map(|re| (re, *desc)))
+            .collect();
 
-        // Launch headless browser
-        let launch_options = LaunchOptions {
-            headless: true,
-            sandbox: false,
-            enable_logging: false,
-            ..Default::default()
-        };
+        // Use the shared HTTP client (includes SSRF protection + timeouts)
+        let client = crate::utils::http::get_global_client();
 
-        let browser = match Browser::new(launch_options) {
-            Ok(b) => b,
-            Err(e) => {
-                error!("Failed to launch headless browser for DOM XSS: {}", e);
-                return vulnerabilities;
-            }
-        };
+        for target in &all_targets {
+            info!("DOM XSS heuristic scan on: {}", target);
 
-        for target in all_targets {
-            for payload in &payloads {
-                let test_url = format!("{}{}", target, payload);
-                info!("Testing DOM XSS on: {}", test_url);
-
-                match self.test_payload_with_browser(&browser, &test_url) {
-                    Ok(true) => {
-                        vulnerabilities.push(
-                            Vulnerability::new(
-                                "DOM-Based XSS (Headless Browser)",
-                                format!("JavaScript execution detected via DOM manipulation using payload: {}", payload),
-                                Severity::High,
-                                VulnCategory::Xss,
-                                test_url.clone(),
-                            )
-                            .with_owasp(OwaspCategory::A03Injection)
-                            .with_remediation(
-                                "Avoid using sink functions like innerHTML, document.write, or eval with untrusted data (like location.hash). Use safe alternatives like textContent or DOMPurify."
-                            )
-                            .with_evidence(
-                                crate::models::vulnerability::Evidence {
-                                    evidence_type: crate::models::vulnerability::EvidenceType::HttpResponse,
-                                    request: None,
-                                    response: Some(format!("Navigated to {}", test_url)),
-                                    payload: None,
-                                    screenshot_path: None,
-                                    description: "A JavaScript alert/prompt/confirm dialog was triggered upon rendering the page.".to_string(),
+            match client.get(target).send().await {
+                Ok(resp) => {
+                    match resp.text().await {
+                        Ok(body) => {
+                            // Check each sink pattern — stop at first match per URL
+                            for (re, description) in &compiled {
+                                if re.is_match(&body) {
+                                    warn!("Potential DOM XSS pattern detected on {}: {}", target, description);
+                                    vulnerabilities.push(
+                                        Vulnerability::new(
+                                            "Potential DOM-Based XSS (Heuristic)",
+                                            format!(
+                                                "A dangerous DOM sink pattern was found in the page source of '{}'.\n\
+                                                Pattern: {}\n\n\
+                                                ⚠ This is a static heuristic — JavaScript was not executed. \
+                                                Manual confirmation is required to determine if the sink is \
+                                                reachable with attacker-controlled input.",
+                                                target, description
+                                            ),
+                                            Severity::Medium,
+                                            VulnCategory::Xss,
+                                            target.clone(),
+                                        )
+                                        .with_owasp(OwaspCategory::A03Injection)
+                                        .with_remediation(
+                                            "Avoid passing untrusted data (e.g., location.hash, \
+                                            URLSearchParams, document.referrer) to dangerous sinks such as \
+                                            innerHTML, document.write, eval, or jQuery .html(). \
+                                            Use textContent for plain text, or sanitise HTML with DOMPurify \
+                                            before inserting into the DOM."
+                                        )
+                                    );
+                                    // One finding per target — avoid flooding with duplicate patterns
+                                    break;
                                 }
-                            )
-                        );
-                        // Stop testing payloads for this URL if one works
-                        break;
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to read response body from {}: {}", target, e);
+                        }
                     }
-                    Ok(false) => {
-                        // No alert triggered
-                    }
-                    Err(e) => {
-                        warn!("Error testing DOM XSS on {}: {}", test_url, e);
-                    }
+                }
+                Err(e) => {
+                    warn!("HTTP request failed for DOM XSS scan on {}: {}", target, e);
                 }
             }
         }
 
         vulnerabilities
-    }
-
-    fn test_payload_with_browser(&self, browser: &Browser, url: &str) -> Result<bool> {
-        let tab = browser.new_tab()?;
-        
-        // We use a shared boolean to track if an alert was fired
-        let alert_triggered = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let alert_triggered_clone = Arc::clone(&alert_triggered);
-
-        // Register event listener for JavaScript dialogs (alerts)
-        tab.add_event_listener(Arc::new(move |event: &headless_chrome::protocol::cdp::types::Event| {
-            // Ignored TargetCrashed check to fix compile error
-            // For headless_chrome 1.0.8, we check if the event involves a JavascriptDialogOpening
-            // Since the event enum might be complex, we just try to parse the JSON string or use the debug format
-            let ev_str = format!("{:?}", event);
-            if ev_str.contains("JavascriptDialogOpening") {
-                alert_triggered_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-            }
-        }))?;
-
-        // Navigate and wait a moment for scripts to execute
-        let _ = tab.navigate_to(url)?;
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
-        let triggered = alert_triggered.load(std::sync::atomic::Ordering::SeqCst);
-        
-        let _ = tab.close(true);
-
-        Ok(triggered)
     }
 }

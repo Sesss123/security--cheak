@@ -1,32 +1,63 @@
-import { Injectable, CanActivate, ExecutionContext, Inject } from '@nestjs/common';
-import { DB_POOL } from '../db/database.module';
-import { Pool } from 'pg';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
 
+/**
+ * [FIX #26] AuthGuard now performs real JWT verification.
+ *
+ * Previous code auto-logged in as the first DB user without any token check —
+ * a critical security bypass that let unauthenticated callers access all protected
+ * endpoints.
+ *
+ * New behaviour:
+ *   1. Extract Bearer token from the Authorization header ONLY.
+ *   2. Verify the token signature using JWT_SECRET.
+ *   3. Attach the decoded payload to request.user on success.
+ *   4. Throw 401 Unauthorized on any failure.
+ *
+ * [FIX #29] Token is NOT accepted via URL query string to prevent leakage in
+ * access logs (e.g. ?token=...). Use the Authorization header exclusively.
+ */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(@Inject(DB_POOL) private db: Pool) {}
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    
+
+    // Extract token from "Authorization: Bearer <token>" header only
+    const authHeader: string | undefined = request.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing or malformed Authorization header');
+    }
+
+    const token = authHeader.slice(7); // Remove "Bearer " prefix
+
     try {
-      // Auto-login as default local user (Bypass JWT for single-user mode)
-      let userResult = await this.db.query('SELECT id, email FROM users LIMIT 1');
-      
-      if (userResult.rows.length === 0) {
-        // Create a default user if none exists
-        userResult = await this.db.query(`
-          INSERT INTO users (email, password_hash, name) 
-          VALUES ('admin@localhost', 'dummy', 'Local Administrator') 
-          RETURNING id, email
-        `);
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        throw new Error('JWT_SECRET environment variable is not set');
       }
-      
-      request.user = { userId: userResult.rows[0].id, email: userResult.rows[0].email };
+
+      // Verify signature and expiry; throws if invalid
+      const payload = jwt.verify(token, secret) as {
+        userId: string;
+        email: string;
+        role: string;
+      };
+
+      // Attach decoded payload so controllers can access req.user
+      request.user = {
+        userId: payload.userId,
+        email: payload.email,
+        role: payload.role,
+      };
+
       return true;
-    } catch (err) {
-      console.error('AuthGuard bypass error:', err);
-      return false;
+    } catch (err: any) {
+      throw new UnauthorizedException(`Invalid or expired token: ${err.message}`);
     }
   }
 }

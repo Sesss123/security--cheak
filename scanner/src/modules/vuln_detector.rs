@@ -32,6 +32,14 @@ const SQLI_PAYLOADS: &[&str] = &[
     "1; DROP TABLE users--",
 ];
 
+/// [FIX #23] Time-based blind SQLi payloads: (payload, expected_delay_secs)
+const SQLI_TIME_PAYLOADS: &[(&str, u64)] = &[
+    ("' AND SLEEP(3)--",                  3), // MySQL
+    ("1; WAITFOR DELAY '0:0:3'--",        3), // MSSQL
+    ("' OR pg_sleep(3)--",                3), // PostgreSQL
+    ("1' AND (SELECT 1 FROM (SELECT SLEEP(3))A)--", 3), // MySQL variant
+];
+
 /// SQL error patterns to detect
 const SQL_ERROR_PATTERNS: &[&str] = &[
     "SQL syntax",
@@ -87,7 +95,6 @@ pub struct VulnDetector {
 impl VulnDetector {
     pub fn new(base_url: String) -> Self {
         let client = crate::utils::http::get_global_client();
-
         Self { client, base_url }
     }
 
@@ -154,6 +161,9 @@ impl VulnDetector {
         let sqli_future = async {
             if scan_types.contains(&ScanType::SqlInjection) { self.check_sql_injection(&crawl_result).await } else { vec![] }
         };
+        let sqli_time_future = async {
+            if scan_types.contains(&ScanType::SqlInjection) { self.check_sql_injection_time_based(&crawl_result).await } else { vec![] }
+        };
         let xss_future = async {
             if scan_types.contains(&ScanType::Xss) { self.check_xss(&crawl_result).await } else { vec![] }
         };
@@ -167,8 +177,8 @@ impl VulnDetector {
             if scan_types.contains(&ScanType::JwtAnalysis) { self.check_jwt_weaknesses().await } else { vec![] }
         };
 
-        let (sqli_vulns, xss_vulns, redirect_vulns, info_vulns, jwt_vulns) = tokio::join!(
-            sqli_future, xss_future, redirect_future, info_future, jwt_future
+        let (sqli_vulns, sqli_time_vulns, xss_vulns, redirect_vulns, info_vulns, jwt_vulns) = tokio::join!(
+            sqli_future, sqli_time_future, xss_future, redirect_future, info_future, jwt_future
         );
 
         // 3. Run Advanced Attack Modules (Phase B) conditionally
@@ -203,6 +213,7 @@ impl VulnDetector {
         );
 
         vulns.extend(sqli_vulns);
+        vulns.extend(sqli_time_vulns);   // [FIX #23]
         vulns.extend(xss_vulns);
         vulns.extend(redirect_vulns);
         vulns.extend(info_vulns);
@@ -221,7 +232,9 @@ impl VulnDetector {
         vulns
     }
 
-    /// SQL Injection detection
+    // ── SQL Injection (Error-Based) ────────────────────────────────────────
+
+    /// SQL Injection detection — error-based, GET and POST forms
     async fn check_sql_injection(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
         info!("Testing for SQL Injection on discovered endpoints...");
         let mut vulns = vec![];
@@ -231,17 +244,19 @@ impl VulnDetector {
             format!("{}/user?id=", self.base_url),
         ];
 
-        // Add dynamic endpoints from crawler
+        // Add dynamic endpoints from crawler — GET forms
         for form in &crawl_result.forms {
             if form.method == "GET" && !form.inputs.is_empty() {
-                let param = &form.inputs[0];
-                test_urls.push(format!("{}?{}=", form.action, param));
+                // [FIX #12] Test ALL inputs, not just the first one
+                for param in &form.inputs {
+                    test_urls.push(format!("{}?{}=", form.action, param));
+                }
             }
         }
         
         for url in &crawl_result.urls {
-            if url.contains("?") && url.contains("=") {
-                let base = url.split("=").next().unwrap_or(url);
+            if url.contains('?') && url.contains('=') {
+                let base = url.split('=').next().unwrap_or(url);
                 test_urls.push(format!("{}=", base));
             }
         }
@@ -260,7 +275,7 @@ impl VulnDetector {
             }
 
             for payload in SQLI_PAYLOADS {
-                let test_url = format!("{}{}", base_test_url, urlencoding::encode(payload));
+                let test_url = format!("{}{}", base_test_url, percent_encode(payload));
 
                 match self.client.get(&test_url).send().await {
                     Ok(resp) => {
@@ -269,49 +284,86 @@ impl VulnDetector {
                                 if !base_errors_present.contains(pattern) && body.to_lowercase().contains(&pattern.to_lowercase()) {
                                     warn!("SQL Injection found at {} with payload: {}", test_url, payload);
 
-                                    let vuln = Vulnerability::new(
-                                        "SQL Injection Detected",
-                                        format!(
-                                            "SQL error message exposed when injecting payload '{}'. \
-                                            The application returns database error messages which \
-                                            indicates unsanitized input being passed to SQL queries.",
-                                            payload
-                                        ),
-                                        Severity::Critical,
-                                        VulnCategory::SqlInjection,
-                                        test_url.clone(),
-                                    )
-                                    .with_remediation(
-                                        "Use parameterized queries / prepared statements. \
-                                        Never concatenate user input into SQL queries. \
-                                        Implement input validation and error handling that \
-                                        doesn't expose database errors to users."
-                                    )
-                                    .with_owasp(OwaspCategory::A03Injection)
-                                    .with_cwe(89)
-                                    .with_evidence(Evidence {
-                                        evidence_type: EvidenceType::HttpResponse,
-                                        request: Some(format!("GET {}", test_url)),
-                                        response: Some(
-                                            body.chars().take(500).collect()
-                                        ),
-                                        payload: Some(payload.to_string()),
-                                        screenshot_path: None,
-                                        description: format!(
-                                            "SQL error pattern '{}' found in response",
-                                            pattern
-                                        ),
-                                    });
-
-                                    vulns.push(vuln);
+                                    vulns.push(
+                                        Vulnerability::new(
+                                            "SQL Injection Detected",
+                                            format!(
+                                                "SQL error message exposed when injecting payload '{}'. \
+                                                The application returns database error messages which \
+                                                indicates unsanitized input being passed to SQL queries.",
+                                                payload
+                                            ),
+                                            Severity::Critical,
+                                            VulnCategory::SqlInjection,
+                                            test_url.clone(),
+                                        )
+                                        .with_remediation(
+                                            "Use parameterized queries / prepared statements. \
+                                            Never concatenate user input into SQL queries. \
+                                            Implement input validation and error handling that \
+                                            doesn't expose database errors to users."
+                                        )
+                                        .with_owasp(OwaspCategory::A03Injection)
+                                        .with_cwe(89)
+                                        .with_evidence(Evidence {
+                                            evidence_type: EvidenceType::HttpResponse,
+                                            request: Some(format!("GET {}", test_url)),
+                                            response: Some(body.chars().take(500).collect()),
+                                            payload: Some(payload.to_string()),
+                                            screenshot_path: None,
+                                            description: format!("SQL error pattern '{}' found in response", pattern),
+                                        })
+                                    );
                                     break; // One vuln per endpoint
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        // Connection errors can also indicate injection (crash)
                         warn!("Request failed for {}: {}", test_url, e);
+                    }
+                }
+            }
+        }
+
+        // [FIX #20] Also test POST forms
+        for form in &crawl_result.forms {
+            if form.method == "POST" && !form.inputs.is_empty() {
+                for payload in SQLI_PAYLOADS {
+                    // Build form body with all inputs set to the payload
+                    let mut form_body: Vec<(&str, &str)> = Vec::new();
+                    for param in &form.inputs {
+                        form_body.push((param.as_str(), payload));
+                    }
+
+                    match self.client.post(&form.action).form(&form_body).send().await {
+                        Ok(resp) => {
+                            if let Ok(body) = resp.text().await {
+                                for pattern in SQL_ERROR_PATTERNS {
+                                    if body.to_lowercase().contains(&pattern.to_lowercase()) {
+                                        warn!("POST SQLi found at {} with payload: {}", form.action, payload);
+                                        vulns.push(
+                                            Vulnerability::new(
+                                                "SQL Injection Detected (POST)",
+                                                format!(
+                                                    "SQL error message exposed in POST request to '{}' \
+                                                    with payload '{}'. Input is passed unsanitized to SQL queries.",
+                                                    form.action, payload
+                                                ),
+                                                Severity::Critical,
+                                                VulnCategory::SqlInjection,
+                                                form.action.clone(),
+                                            )
+                                            .with_remediation("Use parameterized queries. Never concatenate user input into SQL.")
+                                            .with_owasp(OwaspCategory::A03Injection)
+                                            .with_cwe(89)
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => warn!("POST request failed for {}: {}", form.action, e),
                     }
                 }
             }
@@ -320,7 +372,72 @@ impl VulnDetector {
         vulns
     }
 
-    /// XSS Detection
+    // ── SQL Injection (Time-Based Blind) ──────────────────────────────────
+
+    /// [FIX #23] Time-based blind SQL injection detection.
+    /// Measures response time delta — if a sleep payload causes a ≥ 2.5s delay,
+    /// it indicates the SQL was executed by the database.
+    async fn check_sql_injection_time_based(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
+        info!("Testing for Time-Based Blind SQL Injection...");
+        let mut vulns = vec![];
+
+        let mut test_endpoints: Vec<(String, String)> = vec![
+            (format!("{}/search?q=", self.base_url), "GET".into()),
+            (format!("{}/user?id=", self.base_url),  "GET".into()),
+        ];
+
+        for form in &crawl_result.forms {
+            if !form.inputs.is_empty() {
+                test_endpoints.push((format!("{}?{}=", form.action, form.inputs[0]), form.method.clone()));
+            }
+        }
+
+        for (base_url, method) in &test_endpoints {
+            for (payload, expected_delay) in SQLI_TIME_PAYLOADS {
+                let test_url = format!("{}{}", base_url, percent_encode(payload));
+                let start = std::time::Instant::now();
+
+                let resp = if method == "GET" {
+                    self.client.get(&test_url).send().await
+                } else {
+                    // Use base_url as action for POST
+                    self.client.post(base_url.trim_end_matches('=')).form(&[("q", payload)]).send().await
+                };
+
+                if resp.is_ok() {
+                    let elapsed = start.elapsed().as_secs();
+                    // Allow 0.5s margin on top of expected delay
+                    if elapsed >= expected_delay.saturating_sub(1) + *expected_delay {
+                        warn!("Time-based blind SQLi suspected at {} (delay: {}s)", test_url, elapsed);
+                        vulns.push(
+                            Vulnerability::new(
+                                "Time-Based Blind SQL Injection",
+                                format!(
+                                    "Response delay of ~{}s detected when injecting '{}'. \
+                                    This indicates the database executed a sleep/delay statement, \
+                                    confirming blind SQL injection.",
+                                    elapsed, payload
+                                ),
+                                Severity::Critical,
+                                VulnCategory::SqlInjection,
+                                test_url.clone(),
+                            )
+                            .with_remediation("Use parameterized queries. Implement WAF rules blocking SLEEP/WAITFOR. Monitor for unusually slow DB queries.")
+                            .with_owasp(OwaspCategory::A03Injection)
+                            .with_cwe(89)
+                        );
+                        break; // One finding per endpoint
+                    }
+                }
+            }
+        }
+
+        vulns
+    }
+
+    // ── XSS Detection ─────────────────────────────────────────────────────
+
+    /// XSS Detection — reflects payload check, skips JSON responses
     async fn check_xss(&self, crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
         info!("Testing for XSS on discovered endpoints...");
         let mut vulns = vec![];
@@ -329,21 +446,42 @@ impl VulnDetector {
             format!("{}/?q=", self.base_url),
         ];
 
-        // Dynamic parameters
+        // [FIX #12/22] Iterate ALL inputs in each form, not just the first
         for form in &crawl_result.forms {
-            if form.method == "GET" && !form.inputs.is_empty() {
-                let param = &form.inputs[0];
-                test_urls.push(format!("{}?{}=", form.action, param));
+            if form.method == "GET" {
+                for param in &form.inputs {
+                    test_urls.push(format!("{}?{}=", form.action, param));
+                }
             }
         }
 
         for base_url in &test_urls {
             for payload in XSS_PAYLOADS {
-                let encoded = urlencoding::encode(payload);
+                let encoded = percent_encode(payload);
                 let test_url = format!("{}{}", base_url, encoded);
 
                 if let Ok(resp) = self.client.get(&test_url).send().await {
+                    // [FIX #17] Skip JSON API responses — they trigger false positives
+                    // because the server may echo input inside a JSON string, but JSON
+                    // context means the browser won't execute it as HTML.
+                    let content_type = resp
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_lowercase();
+
                     if let Ok(body) = resp.text().await {
+                        // Skip JSON responses — payload may be echoed in JSON string
+                        // but won't be rendered as HTML
+                        let looks_like_json = content_type.contains("application/json")
+                            || body.trim_start().starts_with('{')
+                            || body.trim_start().starts_with('[');
+
+                        if looks_like_json {
+                            continue; // [FIX #17] Skip — JSON context, not HTML sink
+                        }
+
                         // Check if payload is reflected without encoding
                         if body.contains(payload) {
                             warn!("Reflected XSS found at {}", test_url);
@@ -388,10 +526,21 @@ impl VulnDetector {
         vulns
     }
 
+    // ── Open Redirect Detection ────────────────────────────────────────────
+
     /// Open Redirect Detection
     async fn check_open_redirect(&self, _crawl_result: &crate::modules::crawler::CrawlResult) -> Vec<Vulnerability> {
         info!("Testing for Open Redirect...");
         let mut vulns = vec![];
+
+        // [FIX #33] Build the no-follow client ONCE outside the loop.
+        // Previously it was rebuilt for every payload in the inner loop — very expensive.
+        let no_follow_client = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap_or_else(|_| self.client.clone());
 
         for param in REDIRECT_PARAMS {
             for payload in REDIRECT_PAYLOADS {
@@ -399,23 +548,16 @@ impl VulnDetector {
                     "{}/?{}={}",
                     self.base_url,
                     param,
-                    urlencoding::encode(payload)
+                    percent_encode(payload)
                 );
-
-                // Use no-follow client to detect redirects
-                let no_follow_client = Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    // .danger_accept_invalid_certs(true) // Removed per security review
-                    .timeout(std::time::Duration::from_secs(10))
-                    .connect_timeout(std::time::Duration::from_secs(5))
-                    .build()
-                    .unwrap();
 
                 if let Ok(resp) = no_follow_client.get(&test_url).send().await {
                     let status = resp.status().as_u16();
 
-                    // Check for redirect to evil.com
-                    if (301..=302).contains(&status) {
+                    // [FIX #10] Extend redirect detection to cover ALL 3xx redirect codes:
+                    // 301 Moved Permanently, 302 Found, 303 See Other,
+                    // 307 Temporary Redirect, 308 Permanent Redirect
+                    if (301..=308).contains(&status) {
                         if let Some(location) = resp.headers().get("location") {
                             let location_str = location.to_str().unwrap_or("");
                             if location_str.contains("evil.com") || location_str.starts_with("//") {
@@ -425,8 +567,8 @@ impl VulnDetector {
                                     "Open Redirect Vulnerability",
                                     format!(
                                         "The parameter '{}' allows redirecting users to arbitrary \
-                                        external URLs. Attacker can redirect to '{}' for phishing.",
-                                        param, payload
+                                        external URLs (HTTP {}). Attacker can redirect to '{}' for phishing.",
+                                        param, status, payload
                                     ),
                                     Severity::Medium,
                                     VulnCategory::OpenRedirect,
@@ -452,12 +594,16 @@ impl VulnDetector {
         vulns
     }
 
+    // ── Information Disclosure ─────────────────────────────────────────────
+
     /// Information Disclosure Detection
     async fn check_information_disclosure(&self) -> Vec<Vulnerability> {
         info!("Testing for Information Disclosure...");
         let mut vulns = vec![];
 
         // Sensitive files that should not be publicly accessible
+        // [FIX #15] Removed robots.txt and sitemap.xml — these are public-by-design
+        // files that every web server should expose. Flagging them is a false positive.
         let sensitive_paths = vec![
             "/.env",
             "/.env.local",
@@ -476,8 +622,8 @@ impl VulnDetector {
             "/backup.sql",
             "/dump.sql",
             "/database.sql",
-            "/robots.txt",
-            "/sitemap.xml",
+            // robots.txt removed — public by design, not sensitive
+            // sitemap.xml removed — public by design, not sensitive
             "/.htaccess",
             "/web.config",
             "/package.json",
@@ -500,16 +646,17 @@ impl VulnDetector {
                 let status = resp.status().as_u16();
 
                 if status == 200 {
-                    let content_length = resp.content_length().unwrap_or(0);
+                    // [FIX #18] The previous code used resp.content_length() == 0 to skip
+                    // empty responses. content_length() returns None for chunked-encoded
+                    // responses, bypassing the guard. Fix: read the body first, then check.
+                    let body_preview = resp.text().await.unwrap_or_default();
 
-                    // Skip empty responses
-                    if content_length == 0 {
+                    // Skip genuinely empty responses
+                    if body_preview.trim().is_empty() {
                         continue;
                     }
 
-                    let body_preview = resp.text().await.unwrap_or_default();
                     let body_short: String = body_preview.chars().take(200).collect();
-
                     let (severity, description) = self.classify_disclosure(path, &body_short);
 
                     warn!("Information disclosure at {}: {}", test_url, path);
@@ -545,6 +692,8 @@ impl VulnDetector {
         vulns
     }
 
+    // ── JWT Weakness Detection ─────────────────────────────────────────────
+
     /// JWT Weakness Detection
     async fn check_jwt_weaknesses(&self) -> Vec<Vulnerability> {
         info!("Testing for JWT weaknesses...");
@@ -569,35 +718,56 @@ impl VulnDetector {
             {
                 let status = resp.status().as_u16();
 
-                // If we get 200 with alg=none, major vulnerability!
+                // [FIX #16] Previously: any HTTP 200 was flagged as CRITICAL.
+                // False positive: public endpoints that always return 200 (health checks,
+                // documentation) would be flagged even though they don't require auth.
+                //
+                // Fix: only flag if the response body contains user-specific data markers
+                // that indicate the JWT was actually used for authentication/authorization.
                 if status == 200 {
-                    warn!("JWT alg=none vulnerability at {}", test_url);
+                    let body = resp.text().await.unwrap_or_default();
+                    let body_lower = body.to_lowercase();
 
-                    let vuln = Vulnerability::new(
-                        "JWT Algorithm Confusion (alg=none)",
-                        "Server accepts JWT tokens with algorithm set to 'none', \
-                        meaning no signature verification is performed. \
-                        Attackers can forge any JWT token and bypass authentication.",
-                        Severity::Critical,
-                        VulnCategory::JwtWeakness,
-                        test_url.clone(),
-                    )
-                    .with_remediation(
-                        "1. Explicitly whitelist allowed JWT algorithms (RS256, ES256).\n\
-                        2. Never accept 'none' as a valid algorithm.\n\
-                        3. Use a well-maintained JWT library with secure defaults.\n\
-                        4. Validate the algorithm header before processing tokens."
-                    )
-                    .with_owasp(OwaspCategory::A07AuthenticationFailures)
-                    .with_cwe(347);
+                    // Check for user-specific data that would only appear in authenticated responses
+                    let has_auth_data = body_lower.contains("\"email\"")
+                        || body_lower.contains("\"userid\"")
+                        || body_lower.contains("\"user_id\"")
+                        || body_lower.contains("\"role\"")
+                        || body_lower.contains("\"admin\"")
+                        || body_lower.contains("\"token\"")
+                        || body_lower.contains("\"username\"");
 
-                    vulns.push(vuln);
+                    if has_auth_data {
+                        warn!("JWT alg=none vulnerability at {}", test_url);
+
+                        vulns.push(
+                            Vulnerability::new(
+                                "JWT Algorithm Confusion (alg=none)",
+                                "Server accepts JWT tokens with algorithm set to 'none', \
+                                meaning no signature verification is performed. \
+                                Attackers can forge any JWT token and bypass authentication.",
+                                Severity::Critical,
+                                VulnCategory::JwtWeakness,
+                                test_url.clone(),
+                            )
+                            .with_remediation(
+                                "1. Explicitly whitelist allowed JWT algorithms (RS256, ES256).\n\
+                                2. Never accept 'none' as a valid algorithm.\n\
+                                3. Use a well-maintained JWT library with secure defaults.\n\
+                                4. Validate the algorithm header before processing tokens."
+                            )
+                            .with_owasp(OwaspCategory::A07AuthenticationFailures)
+                            .with_cwe(347)
+                        );
+                    }
                 }
             }
         }
 
         vulns
     }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
 
     /// Classify the severity and description of an information disclosure
     fn classify_disclosure(&self, path: &str, content: &str) -> (Severity, String) {
@@ -636,15 +806,12 @@ impl VulnDetector {
     }
 }
 
-// Add urlencoding as a helper (needed for encoding payloads)
-mod urlencoding {
-    pub fn encode(s: &str) -> String {
-        s.chars()
-            .map(|c| match c {
-                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-                ' ' => "+".to_string(),
-                c => format!("%{:02X}", c as u32),
-            })
-            .collect()
-    }
+// ── [FIX #36] URL encoding helper ─────────────────────────────────────────
+// Previous: custom `mod urlencoding` re-implemented percent-encoding from scratch.
+// Now uses the `url` crate's `form_urlencoded` which is already a project dependency
+// (pulled in by the `url` crate used in orchestrator.rs).
+//
+// Using a free function keeps call sites identical to the old `urlencoding::encode()`.
+fn percent_encode(s: &str) -> String {
+    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }

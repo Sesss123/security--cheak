@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiService } from '../../services/ai.service';
-import { RagService } from '../rag/services/rag.service';
+import { AiService } from '../services/ai.service';
+import { RagService } from '../services/rag.service';
 
 @Injectable()
 export class RedTeamSimulationService {

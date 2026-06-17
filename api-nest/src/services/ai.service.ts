@@ -198,4 +198,30 @@ Answer the user's questions about these security findings. Use the Enterprise Kn
     if (score >= 2) return 'LOW';
     return 'MINIMAL';
   }
+
+  async analyzeRisk(vulnerabilities: Vulnerability[]): Promise<string> {
+    const vulnSummary = (vulnerabilities || [])
+      .slice(0, 10)
+      .map((v) => `- ${v.severity}: ${v.title}`)
+      .join('\n');
+
+    const prompt = `You are a senior cybersecurity risk analyst. Analyze the following vulnerabilities and provide a comprehensive risk summary and threat analysis.
+    
+Vulnerabilities:
+${vulnSummary || 'No vulnerabilities found.'}
+
+Provide a summary of the potential business impact, overall risk, and recommended high-level remediation strategies. Keep it professional, structured, and clear.`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.MODEL,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      return response.choices[0]?.message?.content || 'No assessment generated.';
+    } catch (err) {
+      this.logger.error('Groq AI analyzeRisk Error:', err);
+      return 'Failed to analyze risk due to AI service unavailability. Please review vulnerabilities individually.';
+    }
+  }
 }

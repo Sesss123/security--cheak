@@ -11,6 +11,7 @@ export class RetrievalService {
   constructor(private readonly embeddingService: EmbeddingService) {
     this.qdrantClient = new QdrantClient({
       url: process.env.QDRANT_URL ?? 'http://localhost:6333',
+      checkCompatibility: false,
     });
   }
 

@@ -20,6 +20,7 @@ export class KnowledgeService {
   constructor(private readonly embeddingService: EmbeddingService) {
     this.qdrantClient = new QdrantClient({
       url: process.env.QDRANT_URL ?? 'http://localhost:6333',
+      checkCompatibility: false,
     });
     this.initializeCollection().catch(e => this.logger.error('Failed to init Qdrant', e));
   }

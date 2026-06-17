@@ -1,23 +1,24 @@
 import { Module } from '@nestjs/common';
 import { ContinuousMonitorService } from './workers/continuous-monitor.service';
-import { ClientsModule, Transport } from '@nestjs/microservices';
+// ClientsModule (AMQP/RabbitMQ) removed — RabbitMQ was provisioned but never
+// actually wired to any queue. All queue calls use BullMQ over Redis.
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './db/database.module';
 import { AiService } from './services/ai.service';
-import { ScannerService } from './services/scanner.service';
+import { ScannerServiceModule } from './services/scanner-service.module';
 import { RagService } from './services/rag.service';
 import { ThreatIntelService } from './services/threat-intel.service';
 import { AlertService } from './services/alert.service';
 import { MonitoringService } from './services/monitoring.service';
-import { ScanGateway } from './gateways/scan.gateway';
 import { AuthController } from './controllers/auth.controller';
 import { ScanController } from './controllers/scan.controller';
 import { AnalyticsController } from './controllers/analytics.controller';
 import { HealthController } from './controllers/health.controller';
-import { ResultAggregatorProcessor } from './workers/result-aggregator.processor.js';
+// ResultAggregatorProcessor has been moved to WorkerModule.
+// It must run in the worker container which owns the scan-results queue.
 import { CtfModule } from './ctf/ctf.module';
 import { ApiScannerModule } from './scanners/api-scanner/api-scanner.module';
 import { ContainerScannerModule } from './scanners/container-scanner/container-scanner.module';
@@ -30,6 +31,7 @@ import { AgentsModule } from './ai/agents/agents.module';
 @Module({
   imports: [
     DatabaseModule,
+    ScannerServiceModule,
     ApiScannerModule,
     ContainerScannerModule,
     CloudScannerModule,
@@ -47,9 +49,6 @@ import { AgentsModule } from './ai/agents/agents.module';
       },
     }),
     BullModule.registerQueue({
-      name: 'scan-jobs',
-    }),
-    BullModule.registerQueue({
       name: 'scan-results',
     }),
   ],
@@ -63,14 +62,12 @@ import { AgentsModule } from './ai/agents/agents.module';
   providers: [
     AppService, 
     AiService, 
-    ScannerService, 
     RagService, 
     ThreatIntelService, 
     AlertService,
     MonitoringService,
-    ScanGateway,
-    ResultAggregatorProcessor,
-    ContinuousMonitorService
+    // ResultAggregatorProcessor — lives in WorkerModule, not here
+    ContinuousMonitorService  // cron job: runs only in API container
   ],
 })
 export class AppModule {}

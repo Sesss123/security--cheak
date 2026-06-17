@@ -39,31 +39,26 @@ impl ScanOrchestrator {
             target_url = format!("https://{}", target_url);
         }
 
-        let is_url = true; // We forced it to be a URL above
+        // URL parsing is always executed — target_url is guaranteed to have a scheme above
+        // Parse URL; fall back to http:// if https:// scheme causes an error
+        let url = match Url::parse(&target_url) {
+            Ok(u) => u,
+            Err(_) => {
+                info!("HTTPS parsing failed. Falling back to http://");
+                target_url = format!("http://{}", request.target_url);
+                Url::parse(&target_url).context("Invalid target URL")?
+            }
+        };
         let mut target_ip = None;
-        let mut url_scheme = String::new();
+        let url_scheme = url.scheme().to_string();
+        let host = url.host_str()
+            .context("Could not extract host from URL")?
+            .to_string();
 
-        if is_url {
-            // If parsing fails for HTTPS, fallback to HTTP
-            let url = match Url::parse(&target_url) {
-                Ok(u) => u,
-                Err(_) => {
-                    info!("HTTPS parsing failed. Falling back to http://");
-                    target_url = format!("http://{}", request.target_url);
-                    Url::parse(&target_url).context("Invalid target URL")?
-                }
-            };
-
-            url_scheme = url.scheme().to_string();
-            let host = url.host_str()
-                .context("Could not extract host from URL")?
-                .to_string();
-
-            // Resolve hostname to IP asynchronously to avoid thread blocking
-            if let Ok(mut addrs) = tokio::net::lookup_host(format!("{}:80", host)).await {
-                if let Some(addr) = addrs.next() {
-                    target_ip = Some(addr.ip());
-                }
+        // Resolve hostname to IP asynchronously to avoid thread blocking
+        if let Ok(mut addrs) = tokio::net::lookup_host(format!("{}:80", host)).await {
+            if let Some(addr) = addrs.next() {
+                target_ip = Some(addr.ip());
             }
         }
 
@@ -92,8 +87,8 @@ impl ScanOrchestrator {
         };
 
         let headers_fut = async {
-            if (request.scan_types.contains(&ScanType::SecurityHeaders)
-                || request.scan_types.contains(&ScanType::HttpHeaders)) && is_url {
+            if request.scan_types.contains(&ScanType::SecurityHeaders)
+                || request.scan_types.contains(&ScanType::HttpHeaders) {
                 info!("Analyzing security headers...");
                 let header_analyzer = HeaderAnalyzer::new();
                 return header_analyzer.analyze(target_url_ref).await.ok();
@@ -102,7 +97,7 @@ impl ScanOrchestrator {
         };
 
         let cors_fut = async {
-            if request.scan_types.contains(&ScanType::CorsCheck) && is_url {
+            if request.scan_types.contains(&ScanType::CorsCheck) {
                 info!("Checking CORS configuration...");
                 return Some(analyze_cors(target_url_ref).await);
             }
@@ -110,16 +105,14 @@ impl ScanOrchestrator {
         };
 
         let vuln_fut = async {
-            if is_url {
-                info!("Running vulnerability detection...");
+            // Vulnerability detection always runs against the (validated) target URL
+            info!("Running vulnerability detection...");
                 let vuln_detector = VulnDetector::new(target_url_ref.clone());
-                return Some(vuln_detector.detect_requested(&request.scan_types).await);
-            }
-            None
+            return Some(vuln_detector.detect_requested(&request.scan_types).await);
         };
 
         let ctf_fut = async {
-            if request.scan_types.contains(&ScanType::CtfScan) && is_url {
+            if request.scan_types.contains(&ScanType::CtfScan) {
                 info!("Running CTF analysis...");
                 let ctf_scanner = CtfScanner::new(target_url_ref.clone());
                 return Some(ctf_scanner.scan_all().await);
@@ -129,7 +122,21 @@ impl ScanOrchestrator {
 
         let sast_fut = async {
             if request.scan_types.contains(&ScanType::Sast) {
-                info!("Running SAST analysis...");
+                // [FIX #5] SastAnalyzer requires a local filesystem directory path.
+                // Previously it received the HTTP URL (e.g., "https://example.com")
+                // which caused an early return error "path does not exist or is not a directory".
+                //
+                // Detection: if the target starts with http:// or https://, it is a URL,
+                // not a local path. SAST is only meaningful for local source trees.
+                if target_url_ref.starts_with("http://") || target_url_ref.starts_with("https://") {
+                    info!(
+                        "SAST skipped: target '{}' is a URL, not a local file path. \
+                        To run SAST, pass the path to your source directory (e.g., /path/to/src).",
+                        target_url_ref
+                    );
+                    return None;
+                }
+                info!("Running SAST analysis on local path: {}", target_url_ref);
                 let sast_analyzer = SastAnalyzer::new(target_url_ref.clone());
                 return Some(sast_analyzer.analyze().await);
             }
@@ -160,7 +167,7 @@ impl ScanOrchestrator {
         };
 
         let waf_fut = async {
-            if request.scan_types.contains(&ScanType::WafDetector) && is_url {
+            if request.scan_types.contains(&ScanType::WafDetector) {
                 info!("Running WAF Detection...");
                 let waf = WafDetector::new(target_url_ref.clone());
                 return Some(waf.detect().await);
@@ -169,7 +176,7 @@ impl ScanOrchestrator {
         };
 
         let cloud_fut = async {
-            if request.scan_types.contains(&ScanType::CloudScanner) && is_url {
+            if request.scan_types.contains(&ScanType::CloudScanner) {
                 info!("Running Cloud Infrastructure Scanner...");
                 let cloud = CloudScanner::new(target_url_ref.clone());
                 return Some(cloud.detect().await);
@@ -178,7 +185,7 @@ impl ScanOrchestrator {
         };
 
         let api_fuzzer_fut = async {
-            if request.scan_types.contains(&ScanType::ApiFuzzer) && is_url {
+            if request.scan_types.contains(&ScanType::ApiFuzzer) {
                 info!("Running OpenAPI Fuzzer...");
                 let api_fuzzer = ApiFuzzer::new(target_url_ref.clone());
                 return Some(api_fuzzer.detect().await);

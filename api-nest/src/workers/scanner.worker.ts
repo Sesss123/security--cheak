@@ -1,28 +1,41 @@
 import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject } from '@nestjs/common';
 import { spawn } from 'child_process';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { Scan } from '../types';
+import { Pool } from 'pg';
+import { DB_POOL } from '../db/database.module';
 
 @Processor('scan-jobs')
 export class ScannerWorker extends WorkerHost {
   private readonly logger = new Logger(ScannerWorker.name);
   
-  // [HIGH] Executable Path Whitelist
+  // [FIXED] Issue #5: Original whitelist rejected any path not matching two hard-coded strings,
+  // silently falling back to a default that may not exist (ENOENT). Replaced with a
+  // safe character-set regex that allows any conventional absolute or relative path.
   private getScannerBin(): string {
-    const defaultBin = process.env.NODE_ENV === 'production' ? '/scanner/scanner' : '../scanner/target/release/scanner.exe';
+    const defaultBin =
+      process.env.NODE_ENV === 'production'
+        ? '/scanner/scanner'
+        : '../scanner/target/release/scanner.exe';
     const envBin = process.env.SCANNER_BIN;
-    if (envBin && !['/scanner/scanner', '../scanner/target/release/scanner.exe'].includes(envBin)) {
-      this.logger.warn(`Untrusted SCANNER_BIN provided: ${envBin}. Falling back to default.`);
-      return defaultBin;
+    if (envBin) {
+      // Allow letters, digits, slashes, dots, hyphens, underscores only
+      const safePath = /^[\w\/\.\-]+$/.test(envBin);
+      if (!safePath) {
+        this.logger.warn(`SCANNER_BIN contains unsafe characters: ${envBin}. Using default.`);
+        return defaultBin;
+      }
+      return envBin;
     }
-    return envBin || defaultBin;
+    return defaultBin;
   }
   private readonly SCANNER_BIN = this.getScannerBin();
 
   constructor(
     @InjectQueue('scan-results') private resultQueue: Queue,
+    @Inject(DB_POOL) private db: Pool,
   ) {
     super();
   }
@@ -30,6 +43,9 @@ export class ScannerWorker extends WorkerHost {
   async process(job: Job<{ scanId: string; scan: Scan }, any, string>): Promise<any> {
     const { scanId, scan } = job.data;
     this.logger.log(`Worker processing scan job for ID: ${scanId}`);
+
+    // Mark the scan as 'running' so the UI reflects active state
+    await this.db.query(`UPDATE scans SET status='running' WHERE id=$1`, [scanId]);
 
     try {
       let rawResult: any = { vulnerabilities: [], summary: {} };
@@ -47,6 +63,9 @@ export class ScannerWorker extends WorkerHost {
         const scanTypeMap: Record<string, string> = {
           'port_scan': 'ports',
           'ssl_analysis': 'ssl',
+          // [FIX #14] 'http_headers' was missing — ContinuousMonitorService sends this
+          // type and it was silently dropped (filtered out), resulting in no scan run.
+          'http_headers': 'headers',
           'security_headers': 'headers',
           'sql_injection': 'sqli',
           'xss': 'xss',
@@ -64,11 +83,24 @@ export class ScannerWorker extends WorkerHost {
           'dir_bruteforce': 'dir-bruteforce',
           'waf_detector': 'waf',
           'cloud_scanner': 'cloud',
-          'api_fuzzer': 'api-fuzzer'
+          'api_fuzzer': 'api-fuzzer',
         };
-        // [HIGH] CLI Args Sanitisation: Filter out any scan types not in the whitelist map
-        const rustScans = scan.scan_types.map(t => scanTypeMap[t]).filter(Boolean).join(',');
-        
+        // [FIXED] Bug #3: Guard against empty rustScans.
+        // If all selected scan_types are unknown/unmapped, rustScans will be an empty
+        // string. Passing --scans "" to Clap causes a silent zero-result scan.
+        // Instead, fail fast with a descriptive error.
+        const rustScans = scan.scan_types
+          .map((t: string) => scanTypeMap[t])
+          .filter(Boolean)
+          .join(',');
+
+        if (!rustScans) {
+          throw new Error(
+            `No recognised scan types in request: [${scan.scan_types.join(', ')}]. ` +
+            `Valid types: ${Object.keys(scanTypeMap).join(', ')}`,
+          );
+        }
+
         const args = [
           '--target', scan.target_url,
           '--scans', rustScans,

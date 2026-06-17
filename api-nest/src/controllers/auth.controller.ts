@@ -20,10 +20,23 @@ const LoginSchema = z.object({
 
 @Controller('api/auth')
 export class AuthController {
-  // [MEDIUM] Brute-Force Protection
+  // [FIX #13] Brute-force attempt map.
+  // Previous: entries were never deleted — memory grew indefinitely.
+  // Fix: a cleanup interval runs every 10 minutes and removes stale entries
+  // (any entry whose lockout has expired for more than 10 minutes).
   private loginAttempts = new Map<string, { attempts: number; lockUntil: number }>();
 
-  constructor(@Inject(DB_POOL) private db: Pool) {}
+  constructor(@Inject(DB_POOL) private db: Pool) {
+    // Purge stale rate-limit entries every 10 minutes to prevent memory leak
+    setInterval(() => {
+      const cutoff = Date.now() - 10 * 60 * 1000; // 10 minutes ago
+      for (const [email, record] of this.loginAttempts.entries()) {
+        if (record.lockUntil < cutoff) {
+          this.loginAttempts.delete(email);
+        }
+      }
+    }, 10 * 60 * 1000); // Run every 10 minutes
+  }
 
   @Post('register')
   async register(@Body() bodyData: any, @Res() res: Response) {

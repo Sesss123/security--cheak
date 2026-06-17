@@ -65,7 +65,11 @@ export class ResultAggregatorProcessor extends WorkerHost {
     // This contains all the DB and AI logic previously in ScannerWorker
     const vulns: any[] = rawResult.vulnerabilities ?? [];
     for (const v of vulns) {
-      let severity = v.severity?.as_str ?? v.severity ?? 'INFO';
+      // [FIXED] Issue #8: Rust serialises Severity as Title-case ("High", "Critical") but
+      // the DB schema and filtered queries expect UPPERCASE ("HIGH", "CRITICAL").
+      // The old code used v.severity?.as_str which is a Rust method — always undefined in JS.
+      let severity = (v.severity ?? 'INFO').toString().toUpperCase();
+
       
       const threatIntel = await this.threatIntelService.enrichVulnerability({
         title: v.title,
@@ -149,27 +153,48 @@ export class ResultAggregatorProcessor extends WorkerHost {
     const vulns: Vulnerability[] = vulnRows.rows;
 
     const limit = Number(process.env.AI_ANALYSIS_LIMIT) || 10;
-    for (const vuln of vulns.slice(0, limit)) {
-      try {
-        const analysis = await this.aiService.analyzeVulnerability(
-          vuln,
-          targetUrl,
-        );
-        await this.db.query(
-          `UPDATE vulnerabilities SET
-             ai_explanation=$2, ai_business_impact=$3,
-             ai_remediation_steps=$4, ai_code_example=$5, fix_priority=$6,
-             attack_path=$7, attack_probability=$8
-           WHERE id=$1`,
-          [
-            vuln.id, analysis.explanation, analysis.business_impact,
-            JSON.stringify(analysis.remediation_steps), analysis.code_example,
-            analysis.fix_priority, JSON.stringify(analysis.attack_path || []),
-            analysis.attack_probability || 'MEDIUM',
-          ],
-        );
-      } catch (e) {
-        this.logger.error(`AI analysis failed for vuln ${vuln.id}:`, e);
+    const toAnalyze = vulns.slice(0, limit);
+
+    /**
+     * [FIX #31] Previously: serial for-loop — N vulns = N sequential API calls.
+     * N=10 vulns at ~2s each = 20s total; N=20 = 40s.
+     *
+     * Now: batched parallel execution with CONCURRENCY = 3.
+     * Chunks of 3 are processed simultaneously, then the next chunk starts.
+     * This keeps API pressure manageable while cutting wall-clock time by ~3×.
+     */
+    const CONCURRENCY = 3;
+    for (let i = 0; i < toAnalyze.length; i += CONCURRENCY) {
+      const batch = toAnalyze.slice(i, i + CONCURRENCY);
+
+      // Run this batch in parallel; allSettled never throws on individual errors
+      const results = await Promise.allSettled(
+        batch.map(vuln => this.aiService.analyzeVulnerability(vuln, targetUrl)),
+      );
+
+      // Persist each result regardless of others succeeding or failing
+      for (let j = 0; j < batch.length; j++) {
+        const vuln   = batch[j];
+        const result = results[j];
+
+        if (result.status === 'fulfilled') {
+          const analysis = result.value;
+          await this.db.query(
+            `UPDATE vulnerabilities SET
+               ai_explanation=$2, ai_business_impact=$3,
+               ai_remediation_steps=$4, ai_code_example=$5, fix_priority=$6,
+               attack_path=$7, attack_probability=$8
+             WHERE id=$1`,
+            [
+              vuln.id, analysis.explanation, analysis.business_impact,
+              JSON.stringify(analysis.remediation_steps), analysis.code_example,
+              analysis.fix_priority, JSON.stringify(analysis.attack_path || []),
+              analysis.attack_probability || 'MEDIUM',
+            ],
+          );
+        } else {
+          this.logger.error(`AI analysis failed for vuln ${vuln.id}: ${result.reason}`);
+        }
       }
     }
 

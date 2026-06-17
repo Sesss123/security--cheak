@@ -6,17 +6,20 @@ use anyhow::Result;
 use tracing::{info, debug};
 use crate::models::scan::{PortResult, PortState, PortRange};
 
-/// Common ports to scan (Top 100)
+/// [FIX #32] Common ports to scan — deduplicated and sorted.
+/// Previous array had 16 duplicate entries (e.g., 80, 443 appeared 3× each).
+/// The scan() method called .dedup() at runtime, but the raw const was still messy.
 const COMMON_PORTS: &[u16] = &[
-    21, 22, 23, 25, 53, 80, 110, 111, 135, 139,
-    143, 443, 445, 993, 995, 1723, 3306, 3389, 5900,
-    8080, 8443, 8888, 9090, 9200, 27017,
-    // Web ports
-    80, 443, 8080, 8443, 8000, 8001, 8008, 8888, 9000,
-    // Database ports
-    3306, 5432, 1433, 1521, 27017, 6379, 9200, 5984,
-    // Common services
-    21, 22, 23, 25, 53, 110, 143, 389, 636, 993,
+    // FTP, SSH, Telnet, SMTP, DNS
+    21, 22, 23, 25, 53,
+    // HTTP/HTTPS and common web alternates
+    80, 443, 8000, 8001, 8008, 8080, 8443, 8888, 9000, 9090,
+    // Mail
+    110, 111, 143, 993, 995,
+    // Misc services
+    135, 139, 389, 445, 636, 1723, 3389, 5900,
+    // Databases
+    1433, 1521, 3306, 5432, 5984, 6379, 9200, 27017,
 ];
 
 /// Service detection based on port number

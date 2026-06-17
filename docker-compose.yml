@@ -45,13 +45,12 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - JWT_SECRET=${JWT_SECRET}
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      # [FIX #3] RABBITMQ_URL removed — RabbitMQ service disabled, BullMQ/Redis used instead
       - SCANNER_BIN=/scanner/scanner
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost,http://localhost:5173
     depends_on:
       - postgres
       - redis
-      - rabbitmq
       - api
     networks:
       - security-net
@@ -97,16 +96,20 @@ services:
     networks:
       - security-net
 
-  # ── RabbitMQ Message Broker ──────────────────────────────────
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: security-rabbitmq
-    restart: unless-stopped
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    networks:
-      - security-net
+  # ── RabbitMQ Message Broker ──────────────────────────────────────
+  # [FIX #3] RabbitMQ was provisioned but never used.
+  # All queue operations use BullMQ over Redis (see api-nest/src/worker.module.ts).
+  # Commented out to save ~256MB RAM. Uncomment if you add AMQP consumers in future.
+  #
+  # rabbitmq:
+  #   image: rabbitmq:3-management-alpine
+  #   container_name: security-rabbitmq
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+  #   networks:
+  #     - security-net
 
   # ── Qdrant Vector DB ─────────────────────────────────────────
   qdrant:

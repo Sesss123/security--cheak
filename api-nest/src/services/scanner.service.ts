@@ -1,6 +1,6 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
-import { CreateScanRequest, Scan } from '../types';
+import { CreateScanRequest, Scan, ScanType } from '../types';
 import { DB_POOL } from '../db/database.module';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -54,6 +54,46 @@ export class ScannerService {
       data: { message: 'Scan queued successfully' },
       timestamp: new Date().toISOString(),
     });
+  }
+
+  async startScan(
+    request: { target_url: string; modules: string[]; mode?: string; options?: any },
+    userIdOrTargetId: string,
+  ): Promise<Scan> {
+    this.logger.log(`Starting scan for target: ${request.target_url} initiated by ${userIdOrTargetId}`);
+    
+    // Resolve a valid user_id to satisfy foreign key constraints
+    let userId = userIdOrTargetId;
+    try {
+      const userCheck = await this.db.query('SELECT id FROM users WHERE id = $1', [userId]);
+      if (userCheck.rows.length === 0) {
+        const fallbackUser = await this.db.query('SELECT id FROM users LIMIT 1');
+        if (fallbackUser.rows.length > 0) {
+          userId = fallbackUser.rows[0].id;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed to validate user ID, using fallback: ${err.message}`);
+      const fallbackUser = await this.db.query('SELECT id FROM users LIMIT 1');
+      if (fallbackUser.rows.length > 0) {
+        userId = fallbackUser.rows[0].id;
+      }
+    }
+
+    const scanTypes = (request.modules || []) as ScanType[];
+    const options = {
+      ...(request.options ?? {}),
+      mode: request.mode,
+    };
+
+    const scan = await this.createScan(userId, {
+      target_url: request.target_url,
+      scan_types: scanTypes,
+      options,
+    });
+
+    await this.runScan(scan.id);
+    return scan;
   }
 }
 

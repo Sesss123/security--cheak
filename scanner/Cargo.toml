@@ -45,7 +45,8 @@ regex = "1.10"
 scraper = "0.18"
 
 # DNS Resolution for Subdomain Enum
-trust-dns-resolver = "0.23"
+# trust-dns-resolver was renamed to hickory-resolver in 0.24 (Issue #9)
+hickory-resolver = "0.24"
 # HTTP header analysis
 http = "0.2"
 
@@ -69,8 +70,10 @@ governor = "0.6"
 # Base64 (for SSL cert analysis)
 base64 = "0.21"
 
-# Headless browser for DOM XSS
-headless_chrome = { version = "1.0.8", features = ["fetch"] }
+# [REMOVED] headless_chrome = "1.0.8"
+# Reason: Required a Chromium binary not present in the Docker runtime image.
+# Any scan including dom-xss crashed the entire Rust process (Bug #2).
+# DOM XSS detection now uses HTTP heuristics in dom_xss.rs (zero new dependencies).
 
 [dev-dependencies]
 tokio-test = "0.4"

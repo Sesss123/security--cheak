@@ -2,7 +2,8 @@ use reqwest::Client;
 use serde_json::Value;
 use std::collections::HashSet;
 use tracing::info;
-use trust_dns_resolver::TokioAsyncResolver;
+// trust-dns-resolver was renamed to hickory-resolver (Issue #9)
+use hickory_resolver::TokioAsyncResolver;
 use url::Url;
 
 pub struct SubdomainEnumerator {
@@ -18,7 +19,13 @@ impl SubdomainEnumerator {
             .unwrap();
             
         // Use default system resolver
-        let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap();
+        let resolver = TokioAsyncResolver::tokio_from_system_conf()
+            .unwrap_or_else(|_| {
+                // Fall back to Google DNS if system resolver config is unavailable
+                let cfg = hickory_resolver::config::ResolverConfig::default();
+                let opts = hickory_resolver::config::ResolverOpts::default();
+                TokioAsyncResolver::tokio(cfg, opts)
+            });
         
         Self { client, resolver }
     }

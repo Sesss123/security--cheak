@@ -1,4 +1,11 @@
 import 'dotenv/config';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+try {
+  setGlobalDispatcher(new Agent({ keepAliveMaxTimeout: 10, keepAliveTimeout: 10 }));
+} catch (e) {
+  // Ignore
+}
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws';

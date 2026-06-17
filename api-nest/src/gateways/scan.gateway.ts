@@ -23,10 +23,28 @@ export class ScanGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // [CRITICAL] WebSocket Auth: Verify JWT token
+    /**
+     * [FIX #29] WebSocket JWT auth — Authorization header ONLY.
+     *
+     * The previous code accepted the token via the URL query string:
+     *   ws://host/ws?scanId=xxx&token=yyy
+     * This causes the token to appear in:
+     *   - Web server access logs
+     *   - Browser history
+     *   - Referrer headers sent to third-party scripts
+     *
+     * Fix: accept ONLY the "Authorization: Bearer <token>" header.
+     * Frontend must send it via WebSocket sub-protocol or a custom header.
+     * (WS browser API doesn't support custom headers natively — use a
+     * one-time ticket system or Socket.IO auth payload for browser clients.)
+     */
     try {
-      const token = req.headers['authorization']?.split(' ')[1] || url.searchParams.get('token');
-      if (!token) throw new Error('Token missing');
+      const authHeader = req.headers['authorization'];
+      const token = authHeader?.startsWith('Bearer ')
+        ? authHeader.slice(7)
+        : null;
+
+      if (!token) throw new Error('Token missing — use Authorization: Bearer <token> header');
       jwt.verify(token, process.env.JWT_SECRET as string);
     } catch (err) {
       this.logger.warn(`Rejected unauthorized WS connection for scan: ${scanId}`);
