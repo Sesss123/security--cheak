@@ -165,11 +165,13 @@ async fn main() -> Result<()> {
     };
 
     info!("Scanning: {}", cli.target);
-    println!("\n🔍 Security Scanner v0.1.0");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Target : {}", cli.target);
-    println!("Modules: {:?}", request.scan_types.len());
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    if !cli.json {
+        println!("\n🔍 Security Scanner v0.1.0");
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("Target : {}", cli.target);
+        println!("Modules: {:?}", request.scan_types.len());
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    }
 
     let orchestrator = ScanOrchestrator::new();
     let result = orchestrator.run(request).await?;
