@@ -1,10 +1,14 @@
 import 'dotenv/config';
-import { setGlobalDispatcher, Agent } from 'undici';
 
-try {
-  setGlobalDispatcher(new Agent({ keepAliveMaxTimeout: 10, keepAliveTimeout: 10 }));
-} catch (e) {
-  // Ignore
+// Patch global fetch to resolve undici version mismatch issues with QdrantClient
+const originalFetch = globalThis.fetch;
+if (originalFetch) {
+  globalThis.fetch = function (input: any, init: any) {
+    if (init && init.dispatcher) {
+      delete init.dispatcher;
+    }
+    return originalFetch(input, init);
+  };
 }
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';

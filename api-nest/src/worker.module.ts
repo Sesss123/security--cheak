@@ -12,6 +12,7 @@ import { RagService } from './services/rag.service';
 import { ThreatIntelService } from './services/threat-intel.service';
 import { AlertService } from './services/alert.service';
 import { ScanGateway } from './gateways/scan.gateway';
+import { RagModule } from './ai/rag/rag.module';
 
 /**
  * WorkerModule — runs inside the dedicated worker container (npm run start:worker).
@@ -30,6 +31,7 @@ import { ScanGateway } from './gateways/scan.gateway';
   imports: [
     // Provides DB_POOL token globally within this module context
     DatabaseModule,
+    RagModule,
 
     // ScheduleModule is required by the @nestjs/schedule decorators used transitively
     ScheduleModule.forRoot(),
