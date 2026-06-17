@@ -21,6 +21,13 @@ const CreateScanSchema = z.object({
   }).optional(),
 });
 
+const CreateSmartScanSchema = z.object({
+  target_url: z.string().url({ message: 'Invalid target URL format' }),
+  framework: z.string().transform((val) => val.toLowerCase()).refine((val) => ['wordpress', 'laravel'].includes(val), {
+    message: 'Framework must be wordpress or laravel',
+  }),
+});
+
 @UseGuards(AuthGuard)
 @Controller('api/scans')
 export class ScanController {
@@ -80,20 +87,19 @@ export class ScanController {
   @Post('smart')
   async createSmartScan(@Body() bodyData: any, @Req() req: any, @Res() res: Response) {
     try {
-      const { target_url, framework } = bodyData;
-      if (!target_url) {
-        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Target URL is required' });
+      const parsed = CreateSmartScanSchema.safeParse(bodyData);
+      if (!parsed.success) {
+        const firstError = parsed.error.issues[0]?.message || 'Invalid request parameters';
+        return res.status(HttpStatus.BAD_REQUEST).json({ error: firstError });
       }
-      const fwLower = framework?.toLowerCase();
-      if (!fwLower || !['wordpress', 'laravel'].includes(fwLower)) {
-        return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Framework must be wordpress or laravel' });
-      }
+
+      const { target_url, framework } = parsed.data;
 
       if (this.isPrivateHost(target_url)) {
         return res.status(HttpStatus.FORBIDDEN).json({ error: 'Scanning private or internal IP addresses is not allowed.' });
       }
 
-      const scan = await this.smartWebService.triggerSmartScan(req.user.userId, target_url, fwLower);
+      const scan = await this.smartWebService.triggerSmartScan(req.user.userId, target_url, framework);
 
       // Audit Logging
       await this.db.query(

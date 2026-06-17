@@ -10,8 +10,8 @@ export class SmartWebService {
     private readonly scannerService: ScannerService,
   ) {}
 
-  async triggerSmartScan(targetId: string, targetUrl: string, framework: string): Promise<Scan> {
-    this.logger.log(`Triggering Smart Web Scan for target ${targetId}: ${targetUrl} [Framework: ${framework}]`);
+  async triggerSmartScan(userId: string, targetUrl: string, framework: string): Promise<Scan> {
+    this.logger.log(`Triggering Smart Web Scan for user ${userId}: ${targetUrl} [Framework: ${framework}]`);
     
     // Delegate to the Rust scanner
     return await this.scannerService.startScan({
@@ -21,6 +21,6 @@ export class SmartWebService {
       options: {
         framework, // Passes framework down so Rust scanner can use specific profile
       }
-    } as any, targetId);
+    } as any, userId);
   }
 }

@@ -23,6 +23,24 @@
 
 ---
 
+### Phase 37: Smart Web Scan Integration — Completed 2026-06-17
+- [x] Implement NestJS API types & endpoints (`POST /api/scans/smart`)
+- [x] Implement NestJS worker mapping & pass `--framework` flag to Rust
+- [x] Implement Rust CLI `--framework` flag & `SmartScan` variant
+- [x] Implement Rust Orchestrator integration for `SmartScanner`
+- [x] Implement frontend client `createSmart` API method
+- [x] Implement frontend UI tab for Smart Web Scan on `NewScanPage`
+
+---
+
+### Phase 38: Smart Web Scan Enhancements — Completed 2026-06-17
+- [x] Implement real HTTP checks for WordPress profile (`xmlrpc.php`, `wp-json/wp/v2/users`)
+- [x] Implement real HTTP checks for Laravel profile (`.env` file exposure, debug mode)
+- [x] Add Zod request schema validation in `POST /api/scans/smart` controller endpoint
+- [x] Clean up confusing naming of parameters in `SmartWebService` (`targetId` to `userId`)
+
+---
+
 ### Phase 36: 38-Issue Security Fix Sprint — Completed 2026-06-17
 
 #### Priority A — Critical Security & Architecture
@@ -68,16 +86,6 @@
 - [x] **#34** `trust-dns-resolver` deprecated — already renamed to `hickory-resolver` ✅
 - [x] **#35** `is_url = true` hardcoded dead variable — not present in current codebase ✅
 - [x] **#37** `headless_chrome features=["fetch"]` — dependency already removed ✅
-
----
-
-## 🎯 Phase 37: Smart Web Scan Integration (Completed)
-- [x] Implement NestJS API types & endpoints (`POST /api/scans/smart`)
-- [x] Implement NestJS worker mapping & pass `--framework` flag to Rust
-- [x] Implement Rust CLI `--framework` flag & `SmartScan` variant
-- [x] Implement Rust Orchestrator integration for `SmartScanner`
-- [x] Implement frontend client `createSmart` API method
-- [x] Implement frontend UI tab for Smart Web Scan on `NewScanPage`
 
 ---
 
